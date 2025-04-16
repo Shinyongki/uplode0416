@@ -9,12 +9,27 @@ const setToken = (token) => {
   authToken = token;
   localStorage.setItem('authToken', token);
   console.log('인증 토큰 저장됨');
+  
+  // 세션 쿠키도 함께 설정
+  document.cookie = `monitoring.sid=${token}; path=/; max-age=${7 * 24 * 60 * 60}`; // 7일
 };
 
 const getToken = () => {
   if (!authToken) {
     authToken = localStorage.getItem('authToken');
-    console.log('로컬 스토리지에서 토큰 복구: ' + (authToken ? '성공' : '없음'));
+    if (!authToken) {
+      // 쿠키에서 세션 ID 확인
+      const cookies = document.cookie.split(';');
+      for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'monitoring.sid') {
+          authToken = value;
+          localStorage.setItem('authToken', value);
+          break;
+        }
+      }
+    }
+    console.log('토큰 복구: ' + (authToken ? '성공' : '없음'));
   }
   return authToken;
 };
@@ -22,6 +37,8 @@ const getToken = () => {
 const removeToken = () => {
   authToken = null;
   localStorage.removeItem('authToken');
+  // 세션 쿠키도 삭제
+  document.cookie = 'monitoring.sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   console.log('인증 토큰 제거됨');
 };
 
