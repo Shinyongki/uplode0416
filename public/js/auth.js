@@ -6,29 +6,18 @@ let authToken = null;
 
 // 토큰 관리
 const setToken = (token) => {
+  if (!token) {
+    console.warn('토큰이 없습니다.');
+    return;
+  }
   authToken = token;
   localStorage.setItem('authToken', token);
   console.log('인증 토큰 저장됨');
-  
-  // 세션 쿠키도 함께 설정
-  document.cookie = `monitoring.sid=${token}; path=/; max-age=${7 * 24 * 60 * 60}`; // 7일
 };
 
 const getToken = () => {
   if (!authToken) {
     authToken = localStorage.getItem('authToken');
-    if (!authToken) {
-      // 쿠키에서 세션 ID 확인
-      const cookies = document.cookie.split(';');
-      for (let cookie of cookies) {
-        const [name, value] = cookie.trim().split('=');
-        if (name === 'monitoring.sid') {
-          authToken = value;
-          localStorage.setItem('authToken', value);
-          break;
-        }
-      }
-    }
     console.log('토큰 복구: ' + (authToken ? '성공' : '없음'));
   }
   return authToken;
@@ -37,8 +26,6 @@ const getToken = () => {
 const removeToken = () => {
   authToken = null;
   localStorage.removeItem('authToken');
-  // 세션 쿠키도 삭제
-  document.cookie = 'monitoring.sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   console.log('인증 토큰 제거됨');
 };
 
@@ -63,9 +50,14 @@ const login = async (committeeName) => {
       headers: {
         'Content-Type': 'application/json'
       },
-      credentials: 'include', // 세션 쿠키 포함
+      credentials: 'include',
       body: JSON.stringify({ committeeName })
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || '로그인에 실패했습니다.');
+    }
     
     const data = await response.json();
     console.log('로그인 응답:', data);
@@ -73,7 +65,12 @@ const login = async (committeeName) => {
     if (data.status === 'success' && data.data && data.data.committee) {
       isAuthenticated = true;
       currentUser = data.data.committee;
-      setToken(data.data.token);
+      
+      if (data.data.token) {
+        setToken(data.data.token);
+      } else {
+        console.warn('토큰이 응답에 없습니다.');
+      }
       
       // 로컬 스토리지에 정보 저장
       localStorage.setItem('currentCommittee', JSON.stringify(currentUser));
@@ -81,12 +78,13 @@ const login = async (committeeName) => {
       
       // UI 업데이트
       updateAuthUI(true);
+      return data;
     }
     
-    return data;
+    throw new Error('로그인 응답이 올바르지 않습니다.');
   } catch (error) {
     console.error('로그인 중 오류 발생:', error);
-    return { status: 'error', message: '로그인 중 오류가 발생했습니다. 다시 시도해주세요.' };
+    return { status: 'error', message: error.message || '로그인 중 오류가 발생했습니다. 다시 시도해주세요.' };
   }
 };
 

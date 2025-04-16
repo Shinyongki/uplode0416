@@ -85,9 +85,15 @@ const login = async (req, res) => {
         });
       }
 
-      // 담당 기관 정보 조회
-      const organizations = await getCommitteeOrganizations(committeeName);
-      committee.organizations = organizations;
+      try {
+        // 담당 기관 정보 조회
+        const organizations = await getCommitteeOrganizations(committeeName);
+        committee.organizations = organizations;
+      } catch (error) {
+        console.error('담당 기관 정보 조회 중 오류:', error);
+        // 기관 정보 조회 실패시에도 로그인은 허용
+        committee.organizations = { mainOrganizations: [], subOrganizations: [] };
+      }
 
       // JWT 토큰 생성
       const token = generateToken(committee);
@@ -126,6 +132,8 @@ const logout = (req, res) => {
     });
   }
   
+  res.clearCookie('connect.sid');
+  
   return res.json({
     status: 'success',
     message: '로그아웃되었습니다.'
@@ -134,29 +142,45 @@ const logout = (req, res) => {
 
 // 현재 인증 상태 확인
 const getCurrentUser = (req, res) => {
-  // 세션에서 사용자 정보 확인
-  if (req.session && req.session.committee) {
-    return res.json({
-      status: 'success',
-      data: { committee: req.session.committee }
-    });
-  }
-  
-  // JWT 미들웨어에서 이미 검증이 완료된 경우
-  if (req.user) {
-    // 세션에 사용자 정보 저장
-    req.session.committee = req.user;
+  try {
+    // JWT 토큰 확인
+    if (req.user) {
+      // 세션에 사용자 정보 저장
+      if (!req.session.committee) {
+        req.session.committee = req.user;
+      }
+      
+      return res.json({
+        status: 'success',
+        data: { 
+          committee: req.user,
+          token: req.session.token || generateToken(req.user)
+        }
+      });
+    }
     
-    return res.json({
-      status: 'success',
-      data: { committee: req.user }
+    // 세션 확인
+    if (req.session && req.session.committee) {
+      return res.json({
+        status: 'success',
+        data: { 
+          committee: req.session.committee,
+          token: req.session.token || generateToken(req.session.committee)
+        }
+      });
+    }
+
+    return res.status(401).json({
+      status: 'error',
+      message: '인증되지 않은 사용자입니다.'
+    });
+  } catch (error) {
+    console.error('인증 상태 확인 중 오류:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: '인증 상태 확인 중 오류가 발생했습니다.'
     });
   }
-
-  return res.status(401).json({
-    status: 'error',
-    message: '인증되지 않은 사용자입니다.'
-  });
 };
 
 module.exports = {
