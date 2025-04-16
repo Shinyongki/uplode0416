@@ -36,6 +36,14 @@ const verifyToken = (token) => {
 const authenticateToken = (req, res, next) => {
   console.log(`인증 요청 경로: ${req.method} ${req.path}`);
   
+  // 1. 세션에서 먼저 확인
+  if (req.session && req.session.committee) {
+    console.log(`세션에서 인증 정보 찾음: ${req.session.committee.name}`);
+    req.user = req.session.committee;
+    return next();
+  }
+  
+  // 2. JWT 토큰 확인
   const authHeader = req.headers['authorization'];
   console.log(`Authorization 헤더: ${authHeader ? '존재함' : '없음'}`);
   
@@ -58,6 +66,10 @@ const authenticateToken = (req, res, next) => {
   }
 
   req.user = result.data;
+  
+  // 세션에 사용자 정보 저장 (다음 요청을 위해)
+  req.session.committee = result.data;
+  
   console.log(`인증 성공: ${req.user.name}`);
   next();
 };

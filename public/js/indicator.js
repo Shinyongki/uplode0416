@@ -12,6 +12,21 @@ let cachedIndicatorResults = {}; // 지표별 월별 결과 캐싱
 
 // 페이지 로드 시 로컬 스토리지에서 저장된 결과 복구
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('indicator.js - DOMContentLoaded 이벤트 발생');
+  
+  // 로그인 화면인지 확인
+  if (window.skipInitialApiCalls) {
+    console.log('indicator.js - 초기 API 호출 건너뛰기 플래그 감지');
+    return;
+  }
+  
+  const loginContainer = document.getElementById('login-container');
+  if (loginContainer && !loginContainer.classList.contains('hidden')) {
+    console.log('indicator.js - 로그인 화면 감지, API 호출 건너뛰기');
+    return;
+  }
+  
+  console.log('indicator.js - 초기화 진행');
   try {
     // 로컬 스토리지에서 저장된 모든 결과 불러오기
     const keys = Object.keys(localStorage);
@@ -1302,6 +1317,20 @@ const saveIndicatorResult = async (indicatorId, isUpdate = false, event) => {
 
 // 페이지 로드 시 로컬 스토리지에서 캐시 복원
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('indicator.js - 캐시 초기화 DOMContentLoaded 이벤트 발생');
+  
+  // 로그인 화면인지 확인
+  if (window.skipInitialApiCalls) {
+    console.log('indicator.js - 캐시 초기화: 초기 API 호출 건너뛰기 플래그 감지');
+    return;
+  }
+  
+  const loginContainer = document.getElementById('login-container');
+  if (loginContainer && !loginContainer.classList.contains('hidden')) {
+    console.log('indicator.js - 캐시 초기화: 로그인 화면 감지, 초기화 건너뛰기');
+    return;
+  }
+  
   try {
     // 로컬 스토리지에서 모든 키 가져오기
     const keys = Object.keys(localStorage);

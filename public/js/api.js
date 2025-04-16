@@ -76,19 +76,34 @@ const api = {
   // 기본 API 호출 함수
   async call(method, endpoint, data = null) {
     try {
+      // 페이지 로드 시마다 세션 확인
+      console.log('API 호출 전 인증 상태 확인');
+      
       const headers = getAuthHeaders();
       console.log(`API 호출: ${method} ${endpoint} (인증 헤더: ${headers.Authorization ? '있음' : '없음'})`);
       
+      // 캐시 방지를 위한 타임스탬프 추가
+      const timestamp = new Date().getTime();
+      let finalEndpoint = endpoint;
+      
+      // GET 요청에만 타임스탬프 추가
+      if (method === 'GET') {
+        finalEndpoint = endpoint.includes('?') ? 
+          `${endpoint}&_t=${timestamp}` : 
+          `${endpoint}?_t=${timestamp}`;
+      }
+      
       const options = {
         method,
-        headers
+        headers,
+        credentials: 'include' // 세션 쿠키를 보내기 위해 필수
       };
 
       if (data) {
         options.body = JSON.stringify(data);
       }
 
-      const response = await fetch(endpoint, options);
+      const response = await fetch(finalEndpoint, options);
       console.log(`API 응답 상태: ${response.status} ${response.statusText}`);
       
       const result = await response.json();
@@ -100,6 +115,29 @@ const api = {
           // 로컬 상태 초기화
           removeToken();
           localStorage.removeItem('currentCommittee');
+          
+          // 로그인 시도 - 세션이 있는지 확인
+          try {
+            const sessionCheckResponse = await fetch('/auth/current', {
+              credentials: 'include' // 세션 쿠키를 보내기 위해 필수
+            });
+            
+            if (sessionCheckResponse.ok) {
+              // 세션이 유효하면 JWT 토큰만 갱신
+              const sessionData = await sessionCheckResponse.json();
+              if (sessionData.status === 'success' && sessionData.data.committee) {
+                // 세션에서 가져온 정보로 토큰 설정
+                setToken(sessionData.data.token || 'session-token');
+                localStorage.setItem('currentCommittee', JSON.stringify(sessionData.data.committee));
+                console.log('세션에서 사용자 정보 복구 성공');
+                
+                // 원래 요청 다시 시도
+                return api.call(method, endpoint, data);
+              }
+            }
+          } catch (sessionError) {
+            console.error('세션 확인 중 오류:', sessionError);
+          }
           
           // 일정 시간 후 로그인 페이지로 리디렉션 (UI 업데이트 시간 주기)
           setTimeout(() => {

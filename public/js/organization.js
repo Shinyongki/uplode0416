@@ -205,5 +205,20 @@ const backToOrganizationList = () => {
 
 // 초기화
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('organization.js - DOMContentLoaded 이벤트 발생');
+  
+  // 로그인 화면인지 확인
+  if (window.skipInitialApiCalls) {
+    console.log('organization.js - 초기 API 호출 건너뛰기 플래그 감지');
+    return;
+  }
+  
+  const loginContainer = document.getElementById('login-container');
+  if (loginContainer && !loginContainer.classList.contains('hidden')) {
+    console.log('organization.js - 로그인 화면 감지, API 호출 건너뛰기');
+    return;
+  }
+  
+  console.log('organization.js - 기관 목록 로드 시작');
   loadOrganizations();
 }); 

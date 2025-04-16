@@ -51,7 +51,8 @@ app.use(session({
   cookie: { 
     secure: false,
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30일로 연장
+    domain: 'localhost'
   },
   name: 'monitoring.sid',
   rolling: true

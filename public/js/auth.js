@@ -68,6 +68,7 @@ const login = async (committeeName) => {
       headers: {
         'Content-Type': 'application/json'
       },
+      credentials: 'include', // 세션 쿠키 포함
       body: JSON.stringify({ committeeName })
     });
     
@@ -82,6 +83,9 @@ const login = async (committeeName) => {
       // 로컬 스토리지에 정보 저장
       localStorage.setItem('currentCommittee', JSON.stringify(currentUser));
       console.log('로그인 성공 - 사용자 정보 및 토큰 저장됨');
+      
+      // UI 업데이트
+      updateAuthUI(true);
     }
     
     return data;
@@ -97,7 +101,8 @@ const logout = async () => {
     console.log('로그아웃 시도');
     const response = await fetch('/auth/logout', {
       method: 'POST',
-      headers: getAuthHeaders()
+      headers: getAuthHeaders(),
+      credentials: 'include' // 세션 쿠키 포함
     });
     
     const data = await response.json();
@@ -131,6 +136,15 @@ const logout = async () => {
 // 현재 인증 상태 확인
 const checkAuth = async () => {
   try {
+    // 로그인 화면인지 확인
+    const loginContainer = document.getElementById('login-container');
+    const isLoginPage = loginContainer && !loginContainer.classList.contains('hidden');
+    
+    if (isLoginPage) {
+      console.log('로그인 화면 - 인증 확인 스킵');
+      return { status: 'skip', message: '로그인 화면에서는 인증 확인을 건너뜁니다.' };
+    }
+    
     const token = getToken();
     if (!token) {
       console.log('인증 확인 실패: 토큰 없음');
@@ -143,7 +157,8 @@ const checkAuth = async () => {
     console.log('서버에 인증 상태 확인 요청');
     // 서버에 인증 상태 확인 요청
     const response = await fetch('/auth/current', {
-      headers: getAuthHeaders()
+      headers: getAuthHeaders(),
+      credentials: 'include' // 세션 쿠키도 함께 전송
     });
     
     if (!response.ok) {

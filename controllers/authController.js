@@ -62,7 +62,11 @@ const login = async (req, res) => {
       // JWT 토큰 생성
       const token = generateToken(committee);
       
-      console.log('마스터 로그인 성공');
+      // 세션에 사용자 정보 저장
+      req.session.committee = committee;
+      req.session.token = token;
+      
+      console.log('마스터 로그인 성공 - 세션 저장됨');
       return res.json({
         status: 'success',
         data: { 
@@ -88,7 +92,11 @@ const login = async (req, res) => {
       // JWT 토큰 생성
       const token = generateToken(committee);
       
-      console.log('일반 위원 로그인 성공:', committeeName);
+      // 세션에 사용자 정보 저장
+      req.session.committee = committee;
+      req.session.token = token;
+      
+      console.log('일반 위원 로그인 성공:', committeeName, '- 세션 저장됨');
       return res.json({
         status: 'success',
         data: { 
@@ -108,6 +116,16 @@ const login = async (req, res) => {
 
 // 로그아웃 처리
 const logout = (req, res) => {
+  // 세션 정보 삭제
+  if (req.session) {
+    req.session.destroy(err => {
+      if (err) {
+        console.error('세션 삭제 중 오류:', err);
+      }
+      console.log('세션 삭제 완료');
+    });
+  }
+  
   return res.json({
     status: 'success',
     message: '로그아웃되었습니다.'
@@ -116,18 +134,28 @@ const logout = (req, res) => {
 
 // 현재 인증 상태 확인
 const getCurrentUser = (req, res) => {
-  // JWT 미들웨어에서 이미 검증이 완료되었으므로,
-  // req.user에 있는 정보를 반환
-  if (!req.user) {
-    return res.status(401).json({
-      status: 'error',
-      message: '인증되지 않은 사용자입니다.'
+  // 세션에서 사용자 정보 확인
+  if (req.session && req.session.committee) {
+    return res.json({
+      status: 'success',
+      data: { committee: req.session.committee }
+    });
+  }
+  
+  // JWT 미들웨어에서 이미 검증이 완료된 경우
+  if (req.user) {
+    // 세션에 사용자 정보 저장
+    req.session.committee = req.user;
+    
+    return res.json({
+      status: 'success',
+      data: { committee: req.user }
     });
   }
 
-  return res.json({
-    status: 'success',
-    data: { committee: req.user }
+  return res.status(401).json({
+    status: 'error',
+    message: '인증되지 않은 사용자입니다.'
   });
 };
 
