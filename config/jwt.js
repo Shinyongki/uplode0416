@@ -13,7 +13,7 @@ const generateToken = (user) => {
       role: user.role
     }, 
     JWT_SECRET, 
-    { expiresIn: '24h' }
+    { expiresIn: '7d' }
   );
   console.log(`토큰 생성 완료: ${user.name} (${user.role})`);
   return token;
