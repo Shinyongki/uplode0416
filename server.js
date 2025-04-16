@@ -43,28 +43,21 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 세션 설정
+// 세션 설정 - 메모리 세션으로 변경
 app.use(session({
   secret: process.env.SESSION_SECRET || 'monitoring_session_secret',
-  resave: true,
-  saveUninitialized: true,
+  resave: false,
+  saveUninitialized: false,
   cookie: { 
-    secure: false,
+    secure: false,  // 로컬 환경에서는 false로 설정
     httpOnly: true,
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30일로 연장
-    domain: 'localhost'
-  },
-  name: 'monitoring.sid',
-  rolling: true
+    maxAge: 24 * 60 * 60 * 1000, // 24시간
+    sameSite: 'lax'  // CSRF 보호
+  }
 }));
 
 // connect-flash 설정
-try {
-  app.use(flash()); // connect-flash 사용
-  console.log('flash 미들웨어 설정 완료');
-} catch (error) {
-  console.error('flash 미들웨어 설정 오류:', error);
-}
+app.use(flash());
 
 // req.flash가 없을 때 대체 함수 제공
 app.use((req, res, next) => {
@@ -81,7 +74,6 @@ app.use((req, res, next) => {
       }
       return req.session.flash[type];
     };
-    console.log('flash 대체 함수 설정됨');
   }
   next();
 });

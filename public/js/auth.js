@@ -42,22 +42,17 @@ const removeToken = () => {
   console.log('인증 토큰 제거됨');
 };
 
-// API 요청에 토큰 추가
+// 인증 헤더 가져오기
 const getAuthHeaders = () => {
   const token = getToken();
-  const headers = {
-    'Content-Type': 'application/json'
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': token ? `Bearer ${token}` : ''
   };
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-    console.log('요청에 인증 헤더 추가됨');
-  } else {
-    console.log('인증 헤더 없음 - 토큰 없음');
-  }
-  
-  return headers;
 };
+
+// 전역 스코프에 노출
+window.getAuthHeaders = getAuthHeaders;
 
 // 로그인 처리
 const login = async (committeeName) => {
@@ -253,7 +248,17 @@ const updateAuthUI = (isAuthenticated = false) => {
     // 마스터 계정이면 마스터 대시보드 표시
     if (isMaster()) {
       console.log('마스터 계정 감지: 마스터 대시보드 표시');
-      showMasterDashboard();
+      try {
+        if (typeof window.showMasterDashboard === 'function') {
+          window.showMasterDashboard();
+        } else {
+          console.error('showMasterDashboard 함수를 찾을 수 없습니다. master.js가 제대로 로드되었는지 확인하세요.');
+          alert('마스터 대시보드를 불러올 수 없습니다. 페이지를 새로고침하거나 관리자에게 문의하세요.');
+        }
+      } catch (error) {
+        console.error('마스터 대시보드 표시 중 오류 발생:', error);
+        alert('마스터 대시보드를 표시하는 중 오류가 발생했습니다.');
+      }
     }
   } else {
     // 로그아웃 상태 UI 업데이트

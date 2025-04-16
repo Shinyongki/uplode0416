@@ -8,7 +8,7 @@ let allCommittees = [];
 let allMatchings = [];
 
 // 마스터 대시보드 초기화 및 표시
-const showMasterDashboard = async () => {
+window.showMasterDashboard = async () => {
   try {
     // 일반 화면 숨기기
     document.getElementById('organization-selection').classList.add('hidden');
@@ -541,7 +541,8 @@ const calculateOrgProgress = (orgCode) => {
 
 // 필터링 적용
 const filterOrganizations = () => {
-  updateMatchingTable();
+  const filter = document.getElementById('org-filter').value;
+  updateMatchingTable(filter);
 };
 
 // 기관 매칭 저장
@@ -737,113 +738,23 @@ const saveOrgMatching = async (orgCode) => {
 
 // 매칭 추가 모달 표시
 const showAddMatchingModal = () => {
-  // 모달 생성
-  const modalContainer = document.createElement('div');
-  modalContainer.id = 'matching-modal';
-  modalContainer.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50';
-  
-  modalContainer.innerHTML = `
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-medium">담당자 매칭 추가</h3>
-        <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-        </button>
+  // 모달 생성 또는 가져오기
+  let modal = document.getElementById('add-matching-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'add-matching-modal';
+    modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center';
+    modal.innerHTML = `
+      <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg">
+        <h3 class="text-lg font-medium mb-4">담당자 매칭 추가</h3>
+        <form id="add-matching-form">
+          <!-- 폼 내용은 동적으로 추가됨 -->
+        </form>
       </div>
-      
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">기관 선택</label>
-        <select id="modal-org-select" class="border rounded px-3 py-2 w-full">
-          <option value="">기관을 선택하세요</option>
-          ${allOrganizations.map(org => `
-            <option value="${org.code || org.기관코드}">
-              ${org.name || org.기관명} (${org.code || org.기관코드})
-            </option>
-          `).join('')}
-        </select>
-      </div>
-      
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">주담당 위원</label>
-        <select id="modal-main-committee" class="border rounded px-3 py-2 w-full">
-          <option value="">선택하세요</option>
-          ${allCommittees.map(committee => `
-            <option value="${committee.name}">${committee.name}</option>
-          `).join('')}
-        </select>
-      </div>
-      
-      <div class="mb-6">
-        <label class="block text-sm font-medium text-gray-700 mb-1">부담당 위원 (다중 선택)</label>
-        <select id="modal-sub-committees" class="border rounded px-3 py-2 w-full" multiple size="4">
-          ${allCommittees.map(committee => `
-            <option value="${committee.name}">${committee.name}</option>
-          `).join('')}
-        </select>
-        <p class="text-xs text-gray-500 mt-1">Ctrl 키를 누른 상태에서 클릭하여 다중 선택할 수 있습니다.</p>
-      </div>
-      
-      <div class="flex justify-end space-x-2">
-        <button id="modal-cancel-btn" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">
-          취소
-        </button>
-        <button id="modal-save-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-          저장
-        </button>
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(modalContainer);
-  
-  // 이벤트 리스너 등록
-  document.getElementById('close-modal-btn').addEventListener('click', () => closeModal('matching-modal'));
-  document.getElementById('modal-cancel-btn').addEventListener('click', () => closeModal('matching-modal'));
-  document.getElementById('modal-save-btn').addEventListener('click', () => {
-    // 선택된 기관 코드 가져오기
-    const orgCode = document.getElementById('modal-org-select').value;
-    if (!orgCode) {
-      alert('기관을 선택해주세요.');
-      return;
-    }
-    saveModalMatching(orgCode);
-  });
-  
-  // 기관 선택 시 기존 매칭 정보 표시
-  document.getElementById('modal-org-select').addEventListener('change', (e) => {
-    const orgCode = e.target.value;
-    if (!orgCode) return;
-    
-    // 기존 매칭 정보 가져오기
-    const matchings = allMatchings.filter(m => m.orgCode === orgCode);
-    
-    // 주담당 위원
-    const mainCommittee = matchings.find(m => m.role === '주담당');
-    if (mainCommittee) {
-      document.getElementById('modal-main-committee').value = mainCommittee.committeeName;
-    } else {
-      document.getElementById('modal-main-committee').value = '';
-    }
-    
-    // 부담당 위원
-    const subCommittees = matchings.filter(m => m.role === '부담당');
-    const subCommitteesSelect = document.getElementById('modal-sub-committees');
-    
-    // 모든 선택 해제
-    Array.from(subCommitteesSelect.options).forEach(option => {
-      option.selected = false;
-    });
-    
-    // 부담당 위원 선택
-    subCommittees.forEach(sub => {
-      const option = Array.from(subCommitteesSelect.options).find(opt => opt.value === sub.committeeName);
-      if (option) {
-        option.selected = true;
-      }
-    });
-  });
+    `;
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
 };
 
 // 모달 닫기
@@ -950,76 +861,23 @@ const showOrganizationsByRegion = () => {
 
 // 기관 추가 모달 표시
 const showAddOrgModal = () => {
-  // 모달 생성
-  const modalContainer = document.createElement('div');
-  modalContainer.id = 'org-modal';
-  modalContainer.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50';
-  
-  // 시/군 리스트 생성
-  const regions = [
-    '창원시', '진주시', '통영시', '사천시', '김해시', '밀양시', '거제시', 
-    '양산시', '의령군', '함안군', '창녕군', '고성군', '남해군', '하동군', 
-    '산청군', '함양군', '거창군', '합천군', '경남'
-  ];
-  
-  const regionOptions = regions.map(region => 
-    `<option value="${region}">${region}</option>`
-  ).join('');
-  
-  // 다음 기관 코드 자동 생성 (A48XXXXXX 형식)
-  const nextOrgCode = `A48${String(Math.floor(Math.random() * 900000) + 100000)}`;
-  
-  modalContainer.innerHTML = `
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-medium">새 기관 추가</h3>
-        <button id="close-org-modal-btn" class="text-gray-400 hover:text-gray-600">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-        </button>
+  // 모달 생성 또는 가져오기
+  let modal = document.getElementById('add-org-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'add-org-modal';
+    modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center';
+    modal.innerHTML = `
+      <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg">
+        <h3 class="text-lg font-medium mb-4">기관 추가</h3>
+        <form id="add-org-form">
+          <!-- 폼 내용은 동적으로 추가됨 -->
+        </form>
       </div>
-      
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">기관명</label>
-        <input id="org-name-input" type="text" class="border rounded px-3 py-2 w-full" placeholder="기관 이름 입력">
-      </div>
-      
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">기관코드</label>
-        <input id="org-code-input" type="text" value="${nextOrgCode}" class="border rounded px-3 py-2 w-full" placeholder="기관 코드 입력 (A48로 시작)">
-        <p class="text-xs text-gray-500 mt-1">기관코드는 A48로 시작하는 고유값이어야 합니다.</p>
-      </div>
-      
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">지역</label>
-        <select id="org-region-select" class="border rounded px-3 py-2 w-full">
-          ${regionOptions}
-        </select>
-      </div>
-      
-      <div class="mb-6">
-        <label class="block text-sm font-medium text-gray-700 mb-1">비고</label>
-        <textarea id="org-note-input" class="border rounded px-3 py-2 w-full" rows="3" placeholder="비고 사항을 입력하세요"></textarea>
-      </div>
-      
-      <div class="flex justify-end space-x-2">
-        <button id="org-cancel-btn" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">
-          취소
-        </button>
-        <button id="org-save-btn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-          저장
-        </button>
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(modalContainer);
-  
-  // 이벤트 리스너 등록
-  document.getElementById('close-org-modal-btn').addEventListener('click', () => closeModal('org-modal'));
-  document.getElementById('org-cancel-btn').addEventListener('click', () => closeModal('org-modal'));
-  document.getElementById('org-save-btn').addEventListener('click', saveNewOrganization);
+    `;
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
 };
 
 // 새 기관 저장
@@ -1204,4 +1062,9 @@ const showMessage = (message, type = 'info') => {
       document.getElementById('toast-message').remove();
     }
   }, 3000);
-}; 
+};
+
+// 전역 스코프에 필요한 함수들 노출
+window.showAddMatchingModal = showAddMatchingModal;
+window.showAddOrgModal = showAddOrgModal;
+window.filterOrganizations = filterOrganizations; 

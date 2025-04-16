@@ -300,6 +300,14 @@ const organizationApi = {
       console.error('기관 정보 가져오기 오류:', error);
       return { status: 'error', message: error.message };
     }
+  },
+  
+  async addOrganization(orgData) {
+    return api.call('POST', '/api/organizations', orgData);
+  },
+  
+  async deleteOrganization(orgCode) {
+    return api.call('DELETE', `/api/organizations/${orgCode}`);
   }
 };
 
@@ -1055,5 +1063,17 @@ const committeeApi = {
       console.error('매칭 정보 업데이트 오류:', error);
       return { status: 'error', message: error.message };
     }
+  },
+  
+  async getAllCommittees() {
+    return api.call('GET', '/api/committees');
+  },
+  
+  async getMyInfo() {
+    return api.call('GET', '/api/committees/me');
   }
-}; 
+};
+
+// 전역 스코프에 API 객체들 노출
+window.organizationApi = organizationApi;
+window.committeeApi = committeeApi; 
