@@ -37,6 +37,9 @@ const showMasterDashboard = async () => {
           <div class="bg-green-50 p-4 rounded-lg">
             <h3 class="text-md font-medium text-green-800 mb-2">전체 완료율</h3>
             <div class="text-3xl font-bold" id="monitoring-completion-rate">0%</div>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+              <div id="monitoring-progress-bar" class="bg-green-600 h-2.5 rounded-full" style="width: 0%"></div>
+            </div>
             <p class="text-sm text-gray-500 mt-1">지표 점검 완료</p>
           </div>
           <div class="bg-purple-50 p-4 rounded-lg">
@@ -83,7 +86,7 @@ const showMasterDashboard = async () => {
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">주담당</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">부담당</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">진행률</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">비고</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">시군</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">관리</th>
                 </tr>
               </thead>
@@ -126,8 +129,8 @@ const loadMasterDashboardData = async () => {
     const orgsResponse = await organizationApi.getAllOrganizations();
     if (orgsResponse.status === 'success') {
       allOrganizations = orgsResponse.data.organizations || [];
-      // 항상 51로 표시
-      document.getElementById('total-orgs-count').textContent = '51';
+      // 기관 수 표시
+      document.getElementById('total-orgs-count').textContent = allOrganizations.length.toString();
       console.log('기관 목록 로드 완료:', allOrganizations.length);
     } else {
       console.error('조직 목록 조회 실패:', orgsResponse.message);
@@ -140,8 +143,7 @@ const loadMasterDashboardData = async () => {
     const committeesResponse = await committeeApi.getAllCommittees();
     if (committeesResponse.status === 'success') {
       allCommittees = committeesResponse.data.committees || [];
-      // 위원 수를 5명으로 하드코딩
-      document.getElementById('committees-count').textContent = '5';
+      document.getElementById('committees-count').textContent = allCommittees.length.toString();
       console.log('위원 목록 로드 완료:', allCommittees.length);
     } else {
       console.error('위원 목록 조회 실패:', committeesResponse.message);
@@ -156,34 +158,15 @@ const loadMasterDashboardData = async () => {
     // 지역별 기관 분류 및 출력
     showOrganizationsByRegion();
 
-    // 4. 진행률 계산 및 표시 (실제 데이터 기반)
+    // 4. 모니터링 결과 데이터 가져오기 및 진행률 계산
     try {
-      // 모니터링 결과 데이터 가져오기
       console.log('모니터링 결과 데이터 가져오기 시작');
       const timestamp = new Date().getTime();
       const headers = getAuthHeaders();
-      console.log(`결과 데이터 API 호출 (인증 헤더: ${headers.Authorization ? '있음' : '없음'})`);
       
       const completionDataResponse = await fetch(`/api/results/me?_t=${timestamp}`, {
         headers: headers
       });
-      
-      console.log(`결과 데이터 API 응답 상태: ${completionDataResponse.status}`);
-      
-      if (completionDataResponse.status === 401) {
-        console.error('인증 오류 (401): 토큰이 만료되었거나 유효하지 않습니다');
-        // 로컬 상태 초기화
-        removeToken();
-        localStorage.removeItem('currentCommittee');
-        
-        // 일정 시간 후 로그인 페이지로 리디렉션
-        setTimeout(() => {
-          alert('세션이 만료되었습니다. 다시 로그인해주세요.');
-          window.location.href = '/';
-        }, 100);
-        
-        throw new Error('인증이 필요합니다. 다시 로그인해주세요.');
-      }
       
       if (!completionDataResponse.ok) {
         console.error('결과 데이터 가져오기 실패:', completionDataResponse.status);
@@ -194,28 +177,50 @@ const loadMasterDashboardData = async () => {
       const completionData = await completionDataResponse.json();
       console.log('결과 데이터 로드 완료', completionData.status);
       
+      // 전체 모니터링 결과 데이터 (모든 기관)
       if (completionData.status === 'success' && completionData.data && completionData.data.results) {
-        // 총 수행해야 할 지표 수
-        const totalIndicators = allOrganizations.length * 63; // 63개 지표 (총 지표 수)
+        // 전역 변수에 모니터링 결과 저장 (기관별 진행률 계산에 사용)
+        window.monitoringResults = completionData.data.results;
         
-        // 수행된 지표 수
-        const completedIndicators = completionData.data.results.length;
+        // 중복 제거된 실제 지표 완료 수 계산
+        const uniqueCompletions = new Set();
+        completionData.data.results.forEach(result => {
+          const key = `${result.기관코드 || result.orgCode}_${result.지표ID || result.indicatorId}`;
+          uniqueCompletions.add(key);
+        });
         
-        // 완료율 계산
+        // 총 수행해야 할 지표 수 (기관 수 x 지표 수)
+        const totalIndicatorsPerOrg = 63; // 각 기관당 지표 수
+        const totalIndicators = allOrganizations.length * totalIndicatorsPerOrg;
+        
+        // 실제 완료된 고유한 지표 수
+        const completedIndicators = uniqueCompletions.size;
+        
+        // 전체 완료율 계산
         const completionRate = totalIndicators > 0 
           ? Math.round((completedIndicators / totalIndicators) * 100) 
           : 0;
         
-        console.log(`완료율 계산: ${completedIndicators}/${totalIndicators} = ${completionRate}%`);
+        console.log(`전체 완료율 계산(중복 제거): ${completedIndicators}/${totalIndicators} = ${completionRate}%`);
+        
+        // UI 업데이트 - 진행률 표시 및 프로그레스 바
         document.getElementById('monitoring-completion-rate').textContent = `${completionRate}%`;
+        
+        // 프로그레스 바가 있으면 업데이트
+        const progressBar = document.getElementById('monitoring-progress-bar');
+        if (progressBar) {
+          progressBar.style.width = `${completionRate}%`;
+        }
       } else {
         // 데이터가 없거나 오류가 발생한 경우
         console.warn('유효한 결과 데이터를 받지 못함');
         document.getElementById('monitoring-completion-rate').textContent = '0%';
+        window.monitoringResults = [];
       }
     } catch (error) {
       console.error('완료율 계산 중 오류:', error);
       document.getElementById('monitoring-completion-rate').textContent = '0%';
+      window.monitoringResults = [];
     }
     
     console.log('마스터 대시보드 데이터 로드 완료');
@@ -229,6 +234,7 @@ const loadMasterDashboardData = async () => {
     document.getElementById('monitoring-completion-rate').textContent = '0%';
     allCommittees = [];
     allOrganizations = [];
+    window.monitoringResults = [];
   }
 };
 
@@ -236,49 +242,91 @@ const loadMasterDashboardData = async () => {
 const refreshMatchingData = async () => {
   try {
     console.log('매칭 정보 새로고침 시작');
-    const matchingsResponse = await committeeApi.getAllMatchings();
     
-    if (matchingsResponse.status === 'success') {
-      allMatchings = matchingsResponse.data.matchings || [];
-      console.log('매칭 정보 로드 완료:', allMatchings.length);
-      
-      // 매칭 데이터 기반으로 테이블 업데이트
-      updateMatchingTable();
-    } else {
-      console.error('매칭 정보 조회 실패:', matchingsResponse.message);
-      
-      // 빈 데이터로 테이블 초기화
-      allMatchings = [];
-      
-      // 테이블을 비움
-      const tableBody = document.getElementById('matching-table-body');
-      if (tableBody) {
-        tableBody.innerHTML = `
-          <tr>
-            <td colspan="7" class="px-6 py-4 text-center text-sm text-gray-500">
-              매칭 정보를 불러오는데 실패했습니다. 새로고침을 시도해주세요.
-            </td>
-          </tr>
-        `;
-      }
-    }
-  } catch (error) {
-    console.error('매칭 데이터 새로고침 중 오류:', error);
-    
-    // 빈 데이터로 테이블 초기화
-    allMatchings = [];
-    
-    // 테이블을 비움
+    // API 호출 전 로딩 표시
     const tableBody = document.getElementById('matching-table-body');
     if (tableBody) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="7" class="px-6 py-4 text-center text-sm text-gray-500">
-            오류: ${error.message || '알 수 없는 오류'}
+          <td colspan="7" class="px-6 py-4 text-center text-gray-500">
+            <div class="flex justify-center items-center space-x-2">
+              <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>매칭 정보를 불러오는 중...</span>
+            </div>
           </td>
         </tr>
       `;
     }
+    
+    // 오류 발생 가능성이 높은 API 호출 구간에 더 자세한 로그 추가
+    console.log('1. API 호출 준비 - 인증 헤더 가져오기');
+    const headers = getAuthHeaders();
+    console.log('인증 헤더:', headers ? '설정됨' : '없음');
+    
+    // 기존 매칭 데이터 보존 (API 호출 실패 시 대비)
+    const existingMatchings = [...allMatchings]; // 기존 데이터 복사본 사용
+    console.log(`기존 매칭 데이터 백업: ${existingMatchings.length}개 항목`);
+    
+    let matchingData = {
+      status: 'success',
+      data: {
+        matchings: existingMatchings 
+      }
+    };
+    
+    try {
+      console.log('2. committeeApi.getAllMatchings 호출 시작');
+      
+      // API 요청 옵션 설정
+      const requestOptions = {
+        credentials: 'include', // 세션 쿠키 포함
+        headers: headers
+      };
+      console.log('API 요청 옵션:', requestOptions);
+      
+      const matchingsResponse = await committeeApi.getAllMatchings();
+      console.log('3. API 응답 수신:', matchingsResponse.status);
+      
+      if (matchingsResponse.status === 'success' && matchingsResponse.data && matchingsResponse.data.matchings) {
+        matchingData = matchingsResponse;
+        console.log('매칭 정보 API 호출 성공:', matchingData.data.matchings.length);
+      } else {
+        console.error('매칭 정보 조회 실패:', matchingsResponse.message);
+        // 오류 메시지 표시하지만 기존 데이터 유지
+        showMessage('매칭 정보를 불러오는데 실패했습니다. 기존 데이터를 사용합니다.', 'warning');
+      }
+    } catch (apiError) {
+      console.error('매칭 API 호출 중 오류:', apiError);
+      // 오류 메시지 표시하지만 기존 데이터 유지
+      showMessage('매칭 API 호출 중 오류가 발생했습니다. 기존 데이터를 사용합니다.', 'warning');
+    }
+    
+    // 매칭 데이터 유효성 확인
+    if (!matchingData.data || !matchingData.data.matchings || !Array.isArray(matchingData.data.matchings)) {
+      console.warn('매칭 데이터가 유효하지 않음. 기존 데이터 사용');
+      matchingData.data = { matchings: existingMatchings };
+    }
+    
+    // 성공하든 실패하든 여기서 데이터 처리
+    allMatchings = matchingData.data.matchings || [];
+    console.log('매칭 정보 처리 완료:', allMatchings.length);
+    
+    // 매칭 데이터 기반으로 테이블 업데이트
+    updateMatchingTable();
+    
+    return true;
+  } catch (error) {
+    console.error('매칭 정보 새로고침 중 오류:', error);
+    
+    // 오류가 발생해도 UI는 유지하기 위해 현재 데이터로 테이블 업데이트
+    updateMatchingTable();
+    
+    // 오류 경고 표시
+    showMessage(`매칭 정보를 새로고침하는 중 오류가 발생했습니다: ${error.message}`, 'error');
+    return false;
   }
 };
 
@@ -324,51 +372,103 @@ const updateMatchingTable = () => {
     return;
   }
   
+  // 시군별로 그룹화
+  const regionGroups = {};
+  
+  filteredOrgs.forEach(org => {
+    const region = org.region || org.지역 || '미분류';
+    if (!regionGroups[region]) {
+      regionGroups[region] = [];
+    }
+    regionGroups[region].push(org);
+  });
+  
   // 테이블 내용 생성
   let tableContent = '';
   
-  filteredOrgs.forEach(org => {
-    // 해당 기관의 매칭 정보 찾기
-    const matching = allMatchings.find(m => m.orgCode === org.code) || {};
-    
-    // 주담당, 부담당 위원 정보
-    const mainCommitteeName = matching.mainCommittee || '-';
-    const subCommitteeName = matching.subCommittee || '-';
-    
-    // 진행률 계산 (가상 데이터)
-    const progressRate = Math.floor(Math.random() * 101); // 0~100 사이의 랜덤 값
-    
+  // 시군 그룹별로 정렬하여 출력
+  Object.keys(regionGroups).sort().forEach(region => {
+    // 지역 헤더 행 추가 - 더 시각적으로 명확하게 개선
     tableContent += `
       <tr>
-        <td class="px-6 py-4 whitespace-nowrap">
-          <div class="text-sm font-medium text-gray-900">${org.name}</div>
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap">
-          <div class="text-sm text-gray-500">${org.code}</div>
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap">
-          <div class="text-sm ${mainCommitteeName === '-' ? 'text-red-500' : 'text-gray-900'}">${mainCommitteeName}</div>
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap">
-          <div class="text-sm ${subCommitteeName === '-' ? 'text-yellow-500' : 'text-gray-900'}">${subCommitteeName}</div>
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap">
-          <div class="w-full bg-gray-200 rounded-full h-2.5">
-            <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${progressRate}%"></div>
+        <td colspan="7" class="bg-blue-100 px-6 py-3 text-left">
+          <div class="flex items-center">
+            <span class="font-bold text-blue-800 text-md">${region}</span>
+            <span class="ml-2 bg-blue-200 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+              ${regionGroups[region].length}개 기관
+            </span>
           </div>
-          <div class="text-xs text-gray-500 mt-1 text-right">${progressRate}%</div>
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-          ${org.region || '지역 정보 없음'}
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-          <button class="text-indigo-600 hover:text-indigo-900 mr-2 edit-match-btn" 
-                  data-org-code="${org.code}" data-org-name="${org.name}">
-            담당자 변경
-          </button>
         </td>
       </tr>
     `;
+    
+    // 해당 지역의 기관 목록
+    regionGroups[region].sort((a, b) => {
+      const nameA = a.name || a.기관명 || '';
+      const nameB = b.name || b.기관명 || '';
+      return nameA.localeCompare(nameB);
+    }).forEach(org => {
+      // 해당 기관의 매칭 정보 찾기
+      const mainMatchings = allMatchings.filter(m => m.orgCode === org.code && m.role === '주담당');
+      const subMatchings = allMatchings.filter(m => m.orgCode === org.code && m.role === '부담당');
+      
+      // 주담당, 부담당 위원 정보
+      const mainCommitteeName = mainMatchings.length > 0 ? mainMatchings[0].committeeName : '-';
+      const subCommitteeNames = subMatchings.map(m => m.committeeName).join(', ') || '-';
+      
+      // 진행률 계산 (실제 데이터 사용)
+      const progressRate = calculateOrgProgress(org.code || org.기관코드);
+      
+      // 진행률에 따른 색상 설정
+      let progressColorClass = 'bg-blue-600';
+      if (progressRate >= 75) {
+        progressColorClass = 'bg-green-600';
+      } else if (progressRate >= 50) {
+        progressColorClass = 'bg-blue-600';
+      } else if (progressRate >= 25) {
+        progressColorClass = 'bg-yellow-500';
+      } else {
+        progressColorClass = 'bg-red-500';
+      }
+      
+      tableContent += `
+        <tr class="hover:bg-gray-50">
+          <td class="px-6 py-4 whitespace-nowrap">
+            <div class="text-sm font-medium text-gray-900">${org.name || org.기관명}</div>
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            <div class="text-sm text-gray-500">${org.code || org.기관코드}</div>
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            <div class="text-sm ${mainCommitteeName === '-' ? 'text-red-500' : 'text-gray-900'}">${mainCommitteeName}</div>
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            <div class="text-sm ${subCommitteeNames === '-' ? 'text-yellow-500' : 'text-gray-900'}">${subCommitteeNames}</div>
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="${progressColorClass} h-2.5 rounded-full" style="width: ${progressRate}%"></div>
+            </div>
+            <div class="text-xs text-gray-500 mt-1 text-right">${progressRate}%</div>
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            <span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">${region}</span>
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+            <div class="flex justify-end space-x-2">
+              <button class="text-indigo-600 hover:text-indigo-900 hover:underline edit-match-btn" 
+                      data-org-code="${org.code || org.기관코드}" data-org-name="${org.name || org.기관명}">
+                담당자 변경
+              </button>
+              <button class="text-red-600 hover:text-red-900 hover:underline delete-org-btn"
+                      data-org-code="${org.code || org.기관코드}" data-org-name="${org.name || org.기관명}">
+                삭제
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
   });
   
   // 테이블 업데이트
@@ -379,11 +479,64 @@ const updateMatchingTable = () => {
     btn.addEventListener('click', (e) => {
       const orgCode = e.target.dataset.orgCode;
       const orgName = e.target.dataset.orgName;
-      showEditMatchingModal(orgCode, orgName);
+      console.log('담당자 변경 버튼 클릭:', orgCode, orgName);
+      saveOrgMatching(orgCode);
+    });
+  });
+
+  // 기관 삭제 버튼에 이벤트 리스너 등록
+  document.querySelectorAll('.delete-org-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const orgCode = e.target.dataset.orgCode;
+      const orgName = e.target.dataset.orgName;
+      console.log('기관 삭제 버튼 클릭:', orgCode, orgName);
+      deleteOrganization(orgCode, orgName);
     });
   });
   
   console.log('매칭 테이블 업데이트 완료');
+};
+
+// 기관별 진행률 계산 함수
+const calculateOrgProgress = (orgCode) => {
+  try {
+    // 모니터링 결과 데이터가 없는 경우
+    if (!window.monitoringResults || !Array.isArray(window.monitoringResults)) {
+      console.log(`기관(${orgCode}) 진행률 계산: 모니터링 결과 데이터 없음, 0% 반환`);
+      return 0;
+    }
+    
+    // 총 지표 수 (기관당 63개 지표)
+    const totalIndicatorsPerOrg = 63;
+    
+    // 해당 기관의 결과 개수 계산
+    const orgResults = window.monitoringResults.filter(result => {
+      // 기관코드 필드가 다양한 이름으로 존재할 수 있음
+      const resultOrgCode = result.기관코드 || result.orgCode || '';
+      return resultOrgCode === orgCode;
+    });
+    
+    // 중복 지표 제거 (같은 지표 여러 번 평가된 경우 한 번만 카운트)
+    const uniqueIndicators = new Set();
+    orgResults.forEach(result => {
+      const indicatorId = result.지표ID || result.indicatorId || '';
+      if (indicatorId) {
+        uniqueIndicators.add(indicatorId);
+      }
+    });
+    
+    // 진행률 계산
+    const completedCount = uniqueIndicators.size;
+    const progressRate = totalIndicatorsPerOrg > 0 
+      ? Math.round((completedCount / totalIndicatorsPerOrg) * 100) 
+      : 0;
+    
+    console.log(`기관(${orgCode}) 진행률 계산: ${completedCount}/${totalIndicatorsPerOrg} = ${progressRate}%`);
+    return progressRate;
+  } catch (error) {
+    console.error(`기관(${orgCode}) 진행률 계산 중 오류:`, error);
+    return 0;
+  }
 };
 
 // 필터링 적용
@@ -394,10 +547,10 @@ const filterOrganizations = () => {
 // 기관 매칭 저장
 const saveOrgMatching = async (orgCode) => {
   try {
+    console.log('saveOrgMatching 시작:', orgCode);
     // 기관 찾기
     const organization = allOrganizations.find(org => {
       const code = org.code || org.기관코드 || org.orgCode || '';
-      console.log(`비교 중: ${code} vs ${orgCode}`);
       return code === orgCode;
     });
     
@@ -409,21 +562,15 @@ const saveOrgMatching = async (orgCode) => {
     console.log('매칭 설정할 기관:', organization);
     
     // 다양한 필드명에 대응
-    const orgId = organization.id || organization.orgId || organization.기관ID || '';
     const orgName = organization.name || organization.기관명 || organization.orgName || '';
     const orgRegion = organization.region || organization.지역 || '';
     const orgNote = organization.note || '';
     
     // 현재 매칭 정보 가져오기
-    const currentMatchings = allMatchings.filter(m => {
-      const matchCode = m.orgCode || '';
-      return matchCode === orgCode;
-    });
+    const mainCommittees = allMatchings.filter(m => m.orgCode === orgCode && m.role === '주담당');
+    const subCommittees = allMatchings.filter(m => m.orgCode === orgCode && m.role === '부담당');
     
-    const mainCommittee = currentMatchings.find(m => m && m.role === '주담당');
-    const subCommittees = currentMatchings.filter(m => m && m.role === '부담당');
-    
-    console.log('현재 주담당:', mainCommittee);
+    console.log('현재 주담당:', mainCommittees);
     console.log('현재 부담당:', subCommittees);
     
     // 모달 내용 구성
@@ -447,7 +594,7 @@ const saveOrgMatching = async (orgCode) => {
             <option value="">선택하세요</option>
             ${allCommittees.map(committee => {
               const committeeName = committee.name || '';
-              const isSelected = mainCommittee && mainCommittee.committeeName === committeeName;
+              const isSelected = mainCommittees.length > 0 && mainCommittees[0].committeeName === committeeName;
               return `
                 <option value="${committeeName}" ${isSelected ? 'selected' : ''}>
                   ${committeeName}
@@ -506,178 +653,85 @@ const saveOrgMatching = async (orgCode) => {
     
     // 이벤트 리스너 등록
     document.getElementById('cancel-matching-btn').addEventListener('click', () => closeModal('matching-modal'));
-    document.getElementById('save-matching-confirm-btn').addEventListener('click', () => {
-      saveModalMatching(orgCode)
-        .catch(error => {
-          console.error('매칭 저장 중 오류:', error);
-          closeModal('matching-modal');
-          alert(`매칭 저장 중 오류가 발생했습니다: ${error.message}`);
+    document.getElementById('save-matching-confirm-btn').addEventListener('click', async () => {
+      try {
+        // 선택된 위원 정보 가져오기
+        const mainCommitteeName = document.getElementById('main-committee-select').value;
+        const subCommitteeSelect = document.getElementById('sub-committees-select');
+        const subCommitteeNames = Array.from(subCommitteeSelect.selectedOptions).map(option => option.value);
+        
+        // 점검 유형 가져오기
+        const checkType = document.querySelector('input[name="check-type"]:checked').value;
+        
+        // 매칭 데이터 생성
+        const newMatchings = [];
+        
+        // 주담당 추가
+        if (mainCommitteeName) {
+          const mainCommittee = allCommittees.find(c => c.name === mainCommitteeName);
+          if (mainCommittee) {
+            newMatchings.push({
+              committeeId: mainCommittee.id,
+              committeeName: mainCommittee.name,
+              orgCode: orgCode,
+              orgName: orgName,
+              region: orgRegion,
+              role: '주담당',
+              checkType: checkType
+            });
+          }
+        }
+        
+        // 부담당 추가
+        for (const subName of subCommitteeNames) {
+          const subCommittee = allCommittees.find(c => c.name === subName);
+          if (subCommittee) {
+            newMatchings.push({
+              committeeId: subCommittee.id,
+              committeeName: subCommittee.name,
+              orgCode: orgCode,
+              orgName: orgName,
+              region: orgRegion,
+              role: '부담당',
+              checkType: checkType
+            });
+          }
+        }
+        
+        // 기존 매칭에서 현재 기관 매칭 제외
+        const otherMatchings = allMatchings.filter(m => m.orgCode !== orgCode);
+        
+        // 새로운 매칭 데이터 생성
+        const updatedMatchings = [...otherMatchings, ...newMatchings];
+        
+        // API 호출하여 저장
+        const response = await fetch('/api/committees/matching', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ matchings: updatedMatchings })
         });
+        
+        if (!response.ok) {
+          throw new Error('매칭 정보 저장에 실패했습니다.');
+        }
+        
+        // 성공 처리
+        closeModal('matching-modal');
+        alert('담당자 매칭이 성공적으로 저장되었습니다.');
+        
+        // 매칭 정보 새로고침
+        await refreshMatchingData();
+        
+      } catch (error) {
+        console.error('매칭 저장 중 오류:', error);
+        alert(`매칭 저장 중 오류가 발생했습니다: ${error.message}`);
+      }
     });
   } catch (error) {
     console.error('담당자 설정 모달 표시 중 오류:', error);
     alert('담당자 설정 중 오류가 발생했습니다.');
-  }
-};
-
-// 기관 매칭 정보 초기화
-const resetOrgMatching = async (orgCode) => {
-  try {
-    // 기관 찾기
-    const organization = allOrganizations.find(org => (org.code === orgCode || org.기관코드 === orgCode));
-    if (!organization) {
-      alert(`기관 코드 ${orgCode}에 해당하는 기관을 찾을 수 없습니다.`);
-      return;
-    }
-
-    // 초기화 확인
-    const orgName = organization.name || organization.기관명;
-    if (!confirm(`${orgName} 기관의 모든 담당자 매칭을 초기화하시겠습니까?`)) {
-      return;
-    }
-
-    // 기존 매칭 정보 필터링
-    const updatedMatchings = allMatchings.filter(m => m.orgCode !== orgCode);
-    
-    // API 호출하여 저장
-    const response = await fetch('/api/committees/matching', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ matchings: updatedMatchings })
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || '매칭 정보 초기화 실패');
-    }
-    
-    // 성공 처리
-    alert(`${orgName} 기관의 담당자 매칭이 초기화되었습니다.`);
-    // 매칭 정보 새로고침
-    await refreshMatchingData();
-    
-  } catch (error) {
-    console.error('담당자 초기화 중 오류:', error);
-    alert(`담당자 초기화 중 오류가 발생했습니다: ${error.message}`);
-  }
-};
-
-// 모달에서 매칭 정보 저장
-const saveModalMatching = async (orgCode) => {
-  try {
-    // 기관 정보 찾기
-    const organization = allOrganizations.find(org => (org.code === orgCode || org.기관코드 === orgCode));
-    if (!organization) {
-      throw new Error(`기관 코드 ${orgCode}에 해당하는 기관을 찾을 수 없습니다.`);
-    }
-
-    console.log('저장할 기관 정보:', organization);
-    
-    // 선택된 위원 정보 가져오기
-    const mainCommitteeSelect = document.getElementById('main-committee-select');
-    const subCommitteesSelect = document.getElementById('sub-committees-select');
-    const checkTypeRadios = document.getElementsByName('check-type');
-    
-    const mainCommitteeName = mainCommitteeSelect.value;
-    const subCommitteeNames = Array.from(subCommitteesSelect.selectedOptions).map(option => option.value);
-    
-    // 선택된 점검 유형 가져오기
-    let selectedCheckType = '전체'; // 기본값
-    for (const radio of checkTypeRadios) {
-      if (radio.checked) {
-        selectedCheckType = radio.value;
-        break;
-      }
-    }
-    
-    console.log('선택된 주담당:', mainCommitteeName);
-    console.log('선택된 부담당:', subCommitteeNames);
-    console.log('선택된 점검 유형:', selectedCheckType);
-    
-    // 주담당 위원 정보
-    let mainCommittee = null;
-    if (mainCommitteeName) {
-      const committeeInfo = allCommittees.find(c => c.name === mainCommitteeName);
-      if (committeeInfo) {
-        mainCommittee = {
-          committeeId: committeeInfo.id || '',
-          committeeName: committeeInfo.name,
-          orgId: organization.id || organization.orgId || '',
-          orgCode: orgCode,
-          orgName: organization.name || organization.기관명 || '',
-          region: organization.region || organization.지역 || '',
-          role: '주담당',
-          checkType: selectedCheckType
-        };
-      }
-    }
-    
-    // 부담당 위원 정보
-    const subCommittees = subCommitteeNames.map(name => {
-      const committeeInfo = allCommittees.find(c => c.name === name);
-      if (!committeeInfo) return null;
-      
-      return {
-        committeeId: committeeInfo.id || '',
-        committeeName: committeeInfo.name,
-        orgId: organization.id || organization.orgId || '',
-        orgCode: orgCode,
-        orgName: organization.name || organization.기관명 || '',
-        region: organization.region || organization.지역 || '',
-        role: '부담당',
-        checkType: selectedCheckType
-      };
-    }).filter(Boolean); // null 제거
-    
-    // 현재 매칭 상태 로깅
-    console.log('현재 매칭 상태:', allMatchings);
-    
-    // 기존 매칭에서 현재 기관 매칭은 제외
-    const filteredMatchings = allMatchings.filter(m => m.orgCode !== orgCode);
-    console.log('현재 기관 제외 매칭:', filteredMatchings.length);
-    
-    // 새 매칭 추가
-    let updatedMatchings = [...filteredMatchings];
-    
-    // 주담당 추가
-    if (mainCommittee) {
-      console.log('추가할 주담당:', mainCommittee);
-      updatedMatchings.push(mainCommittee);
-    }
-    
-    // 부담당 추가
-    if (subCommittees.length > 0) {
-      console.log('추가할 부담당 수:', subCommittees.length);
-      updatedMatchings = [...updatedMatchings, ...subCommittees];
-    }
-    
-    console.log('최종 매칭 데이터:', updatedMatchings);
-    
-    // API 호출하여 저장
-    const response = await fetch('/api/committees/matching', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ matchings: updatedMatchings })
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || '매칭 정보 저장 실패');
-    }
-    
-    // 성공 처리
-    closeModal('matching-modal');
-    alert('담당자 매칭이 성공적으로 저장되었습니다.');
-    // 매칭 정보 새로고침
-    await refreshMatchingData();
-    
-  } catch (error) {
-    console.error('매칭 정보 저장 중 오류:', error);
-    alert(`매칭 정보 저장 중 오류가 발생했습니다: ${error.message}`);
   }
 };
 
@@ -1046,79 +1100,108 @@ const saveNewOrganization = async () => {
 };
 
 // 기관 삭제 함수
-const deleteOrganization = async (orgCode) => {
+const deleteOrganization = async (orgCode, orgName) => {
   try {
-    // 기관 정보 찾기
-    const organization = allOrganizations.find(org => 
-      (org.code === orgCode || org.기관코드 === orgCode));
-    
-    if (!organization) {
-      alert(`기관 코드 ${orgCode}에 해당하는 기관을 찾을 수 없습니다.`);
-      return;
-    }
-    
     // 삭제 확인
-    const orgName = organization.name || organization.기관명;
-    if (!confirm(`${orgName} 기관을 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
+    if (!confirm(`${orgName} 기관을 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 관련된 모든 매칭 정보도 함께 삭제됩니다.`)) {
       return;
     }
-    
-    // 기관 관련 매칭 정보 모두 제거
+
+    console.log(`기관 삭제 시작: ${orgName} (${orgCode})`);
+
+    // 1. 기관 관련 매칭 정보 삭제
     const updatedMatchings = allMatchings.filter(m => m.orgCode !== orgCode);
     
-    // 구글 시트에서 기관 삭제 API 호출
-    const response = await fetch(`/api/organizations/delete/${orgCode}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    }).catch(error => {
-      console.error('API 호출 중 오류:', error);
-      
-      // API 오류 시 임시 응답 (개발 환경)
-      console.log('개발 환경에서는 API 오류를 무시하고 로컬 데이터만 업데이트합니다.');
-      return { ok: true, json: () => Promise.resolve({ status: 'success' }) };
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || '기관 삭제 실패');
-    }
-    
-    // 매칭 정보 업데이트
+    // 2. 매칭 정보 업데이트 API 호출
     const matchingResponse = await fetch('/api/committees/matching', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ matchings: updatedMatchings })
-    }).catch(error => {
-      console.error('매칭 API 호출 중 오류:', error);
-      
-      // API 오류 시 임시 응답 (개발 환경)
-      return { ok: true, json: () => Promise.resolve({ status: 'success' }) };
     });
-    
+
     if (!matchingResponse.ok) {
-      const errorData = await matchingResponse.json();
-      throw new Error(errorData.message || '매칭 정보 업데이트 실패');
+      throw new Error('매칭 정보 삭제 중 오류가 발생했습니다.');
     }
+
+    // 3. 기관 삭제 API 호출
+    const deleteResponse = await fetch(`/api/organizations/${orgCode}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!deleteResponse.ok) {
+      throw new Error('기관 삭제 중 오류가 발생했습니다.');
+    }
+
+    // 4. 로컬 데이터 업데이트
+    allMatchings = updatedMatchings;
+    allOrganizations = allOrganizations.filter(org => 
+      (org.code !== orgCode && org.기관코드 !== orgCode)
+    );
+
+    // 5. UI 업데이트
+    updateMatchingTable();
     
-    // 성공 처리
+    // 6. 성공 메시지 표시
     alert(`${orgName} 기관이 성공적으로 삭제되었습니다.`);
     
-    // 기관 목록에서 제거
-    allOrganizations = allOrganizations.filter(org => 
-      (org.code !== orgCode && org.기관코드 !== orgCode));
-    
-    // 매칭 정보 업데이트
-    allMatchings = updatedMatchings;
-    
-    // 데이터 새로고침
-    updateMatchingTable();
+    // 7. 통계 업데이트
     document.getElementById('total-orgs-count').textContent = allOrganizations.length;
+
   } catch (error) {
     console.error('기관 삭제 중 오류:', error);
     alert(`기관 삭제 중 오류가 발생했습니다: ${error.message}`);
   }
+};
+
+// 메시지 표시 함수
+const showMessage = (message, type = 'info') => {
+  // 이미 있는 메시지 제거
+  const existingMsg = document.getElementById('toast-message');
+  if (existingMsg) {
+    existingMsg.remove();
+  }
+  
+  // 타입별 색상 설정
+  let bgColor = 'bg-blue-500';
+  let iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+  
+  if (type === 'success') {
+    bgColor = 'bg-green-500';
+    iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+  } else if (type === 'warning') {
+    bgColor = 'bg-yellow-500';
+    iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>';
+  } else if (type === 'error') {
+    bgColor = 'bg-red-500';
+    iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+  }
+  
+  // 토스트 메시지 요소 생성
+  const toast = document.createElement('div');
+  toast.id = 'toast-message';
+  toast.className = `fixed top-4 right-4 flex items-center p-4 mb-4 text-white ${bgColor} rounded-lg shadow-lg z-50`;
+  toast.innerHTML = `
+    <div class="inline-flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-white/25">
+      ${iconHtml}
+    </div>
+    <div class="ml-3 text-sm font-normal">${message}</div>
+    <button type="button" class="ml-4 bg-white/25 text-white rounded-lg inline-flex h-6 w-6 items-center justify-center hover:bg-white/50" onclick="this.parentElement.remove()">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+    </button>
+  `;
+  
+  // 화면에 표시
+  document.body.appendChild(toast);
+  
+  // 3초 후 자동 제거
+  setTimeout(() => {
+    if (document.getElementById('toast-message')) {
+      document.getElementById('toast-message').remove();
+    }
+  }, 3000);
 }; 

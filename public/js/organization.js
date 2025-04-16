@@ -165,35 +165,66 @@ const createOrganizationCard = (org, isMainOrg) => {
 
 // 기관 선택 처리
 const selectOrganization = (org) => {
-  selectedOrganization = org;
-  
-  // 기관 선택 시 필요한 추가 처리
-  console.log('선택된 기관:', org);
-  
-  // 기관명 표시 업데이트
-  const selectedOrgNameElement = document.getElementById('selected-org-name');
-  if (selectedOrgNameElement) {
-    selectedOrgNameElement.textContent = org.name || org.기관명 || '선택된 기관';
-  }
-
-  // 기관 선택 화면 숨기기
-  document.getElementById('organization-selection').classList.add('hidden');
-  
-  // 모니터링 지표 화면 표시
-  const monitoringIndicatorsElement = document.getElementById('monitoring-indicators');
-  monitoringIndicatorsElement.classList.remove('hidden');
-  
-  // 주기 탭 중 매월 점검 탭 자동 선택
-  const monthlyTab = document.querySelector('.period-tab[data-period="매월"]');
-  if (monthlyTab) {
-    monthlyTab.click();
-  } else {
-    // 탭이 없는 경우 직접 지표 로드 시도
-    if (typeof loadIndicatorsByPeriod === 'function') {
-      loadIndicatorsByPeriod('매월');
-    } else {
-      console.error('지표 로드 함수를 찾을 수 없습니다. indicator.js가 로드되었는지 확인하세요.');
+  try {
+    // 로그인 후 API 호출 허용 플래그 설정
+    window.skipInitialApiCalls = false;
+    
+    // 선택된 기관 정보 설정
+    selectedOrganization = org;
+    
+    console.log('선택된 기관:', org);
+    console.log('API 호출 플래그:', window.skipInitialApiCalls);
+    
+    // 전역 변수에 선택된 기관 저장 (다른 스크립트에서 접근 가능하도록)
+    window.selectedOrganization = org;
+    
+    // 기관명 표시 업데이트
+    const selectedOrgNameElement = document.getElementById('selected-org-name');
+    if (selectedOrgNameElement) {
+      selectedOrgNameElement.textContent = org.name || org.기관명 || '선택된 기관';
     }
+
+    // 기관 선택 화면 숨기기
+    document.getElementById('organization-selection').classList.add('hidden');
+    
+    // 모니터링 지표 화면 표시
+    const monitoringIndicatorsElement = document.getElementById('monitoring-indicators');
+    monitoringIndicatorsElement.classList.remove('hidden');
+    
+    // 주기 탭 중 매월 점검 탭 자동 선택
+    const monthlyTab = document.querySelector('.period-tab[data-period="매월"]');
+    
+    if (monthlyTab) {
+      console.log('매월 탭 클릭 이벤트 실행');
+      monthlyTab.click();
+    } else {
+      // 탭이 없는 경우 직접 지표 로드 시도
+      if (typeof loadIndicatorsByPeriod === 'function') {
+        console.log('loadIndicatorsByPeriod 함수 직접 호출 (매월)');
+        loadIndicatorsByPeriod('매월');
+      } else {
+        console.error('지표 로드 함수를 찾을 수 없습니다. indicator.js가 로드되었는지 확인하세요.');
+        showMessage('지표 로드 중 오류가 발생했습니다. 페이지를 새로고침해 주세요.', 'error');
+      }
+    }
+    
+    // 지표 로드 확인을 위한 타임아웃 설정
+    setTimeout(() => {
+      const indicatorsList = document.getElementById('indicators-list-sidebar');
+      if (indicatorsList && (indicatorsList.children.length === 0 || indicatorsList.innerHTML.includes('지표가 없습니다'))) {
+        console.warn('지표가 로드되지 않았습니다. 다시 시도합니다.');
+        
+        // 지표 로드 재시도
+        if (typeof loadIndicatorsByPeriod === 'function') {
+          console.log('loadIndicatorsByPeriod 함수 재시도 (매월)');
+          loadIndicatorsByPeriod('매월');
+        }
+      }
+    }, 2000); // 2초 후 확인
+    
+  } catch (error) {
+    console.error('기관 선택 처리 중 오류:', error);
+    showMessage('기관 선택 중 오류가 발생했습니다.', 'error');
   }
 };
 

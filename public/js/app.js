@@ -152,6 +152,10 @@ const updateUIAfterLogin = () => {
   document.getElementById('login-container').classList.add('hidden');
   document.getElementById('dashboard-container').classList.remove('hidden');
   
+  // 로그인 화면이 아니므로 API 호출 플래그 리셋
+  window.skipInitialApiCalls = false;
+  console.log('로그인 완료 - API 호출 플래그 리셋됨:', window.skipInitialApiCalls);
+  
   // 사용자 이름 표시
   const currentUser = getCurrentUser();
   const userNameElement = document.getElementById('user-name');
@@ -272,3 +276,100 @@ const setupEventListeners = () => {
     });
   }
 };
+
+// 주기 탭 클릭 처리를 위한 이벤트 설정
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('app.js - DOMContentLoaded 이벤트 발생');
+  
+  // 로그인 화면인지 확인
+  const loginContainer = document.getElementById('login-container');
+  if (loginContainer && !loginContainer.classList.contains('hidden')) {
+    console.log('app.js - 로그인 화면 감지, 초기화 건너뛰기');
+    return;
+  }
+  
+  // 주기 탭 직접 접근 및 이벤트 처리
+  setTimeout(() => {
+    console.log('app.js - 주기 탭 직접 접근');
+    
+    // 각 주기 탭에 직접 클릭 이벤트 추가
+    const tabMonthly = document.getElementById('tab-monthly');
+    const tabSemiannual = document.getElementById('tab-semiannual');
+    const tabQ1 = document.getElementById('tab-q1');
+    
+    console.log('주기 탭 요소:', { 
+      매월: tabMonthly, 
+      반기: tabSemiannual, 
+      '1~3월': tabQ1 
+    });
+    
+    // 특별 클릭 이벤트 처리
+    if (tabSemiannual) {
+      tabSemiannual.addEventListener('click', (e) => {
+        console.log('app.js - 반기 탭 클릭 감지');
+        // 기존 이벤트 처리 이후
+        setTimeout(() => {
+          // 기관이 선택되었는지 확인
+          const selectedOrg = window.selectedOrganization;
+          if (!selectedOrg) {
+            console.log('기관이 선택되지 않음');
+            return;
+          }
+          
+          // 로딩 표시
+          const sidebar = document.getElementById('indicators-list-sidebar');
+          if (sidebar && sidebar.innerHTML.includes('지표가 없습니다') || sidebar.innerHTML.trim() === '') {
+            console.log('지표 없음 - 직접 지표 로드 시도');
+            sidebar.innerHTML = '<div class="p-4 text-center text-gray-500">반기 지표를 불러오는 중...</div>';
+            
+            // 반기 지표 직접 로드 시도
+            try {
+              // 전역 함수 호출
+              if (typeof loadIndicatorsByPeriod === 'function') {
+                console.log('loadIndicatorsByPeriod 함수 호출');
+                loadIndicatorsByPeriod('반기');
+              }
+            } catch (error) {
+              console.error('반기 지표 직접 로드 중 오류:', error);
+            }
+          }
+        }, 500);
+      });
+    }
+    
+    if (tabQ1) {
+      tabQ1.addEventListener('click', (e) => {
+        console.log('app.js - 1~3월 탭 클릭 감지');
+        // 기존 이벤트 처리 이후
+        setTimeout(() => {
+          // 기관이 선택되었는지 확인
+          const selectedOrg = window.selectedOrganization;
+          if (!selectedOrg) {
+            console.log('기관이 선택되지 않음');
+            return;
+          }
+          
+          // 로딩 표시
+          const sidebar = document.getElementById('indicators-list-sidebar');
+          if (sidebar && sidebar.innerHTML.includes('지표가 없습니다') || sidebar.innerHTML.trim() === '') {
+            console.log('지표 없음 - 직접 지표 로드 시도');
+            sidebar.innerHTML = '<div class="p-4 text-center text-gray-500">1~3월 지표를 불러오는 중...</div>';
+            
+            // 1~3월 지표 직접 로드 시도
+            try {
+              // 전역 함수 호출
+              if (typeof loadIndicatorsByPeriod === 'function') {
+                console.log('loadIndicatorsByPeriod 함수 호출');
+                loadIndicatorsByPeriod('1~3월');
+              }
+            } catch (error) {
+              console.error('1~3월 지표 직접 로드 중 오류:', error);
+            }
+          }
+        }, 500);
+      });
+    }
+    
+    console.log('주기 탭 이벤트 직접 등록 완료');
+  }, 2000); // 페이지 로드 후 2초 지연
+});

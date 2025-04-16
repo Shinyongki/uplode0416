@@ -148,13 +148,13 @@
           <div class="border-b border-gray-200 mb-4">
             <ul class="flex flex-wrap -mb-px">
               <li class="mr-2">
-                <button class="period-tab inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:border-gray-300" data-period="매월">매월 점검</button>
+                <button id="tab-monthly" class="period-tab inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:border-gray-300" data-period="매월" onclick="window.periodTabClick(this, '매월')">매월 점검</button>
               </li>
               <li class="mr-2">
-                <button class="period-tab inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:border-gray-300" data-period="반기">반기 점검</button>
+                <button id="tab-semiannual" class="period-tab inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:border-gray-300" data-period="반기" onclick="window.periodTabClick(this, '반기')">반기 점검</button>
               </li>
               <li class="mr-2">
-                <button class="period-tab inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:border-gray-300" data-period="1~3월">1~3월 점검</button>
+                <button id="tab-q1" class="period-tab inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:border-gray-300" data-period="1~3월" onclick="window.periodTabClick(this, '1~3월')">1~3월 점검</button>
               </li>
             </ul>
           </div>

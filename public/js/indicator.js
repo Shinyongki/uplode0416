@@ -15,97 +15,195 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('indicator.js - DOMContentLoaded 이벤트 발생');
   
   // 로그인 화면인지 확인
-  if (window.skipInitialApiCalls) {
-    console.log('indicator.js - 초기 API 호출 건너뛰기 플래그 감지');
+  const skipInitialCalls = window.skipInitialApiCalls === true;
+  console.log('indicator.js - 초기 API 호출 건너뛰기 플래그:', skipInitialCalls);
+  
+  if (skipInitialCalls) {
+    console.log('indicator.js - 초기 API 호출 건너뛰기 플래그가 설정되어 있어 API 호출을 건너뜁니다.');
     return;
   }
   
+  // 로그인 컨테이너 확인
   const loginContainer = document.getElementById('login-container');
-  if (loginContainer && !loginContainer.classList.contains('hidden')) {
+  const isLoginScreen = loginContainer && !loginContainer.classList.contains('hidden');
+  
+  if (isLoginScreen) {
     console.log('indicator.js - 로그인 화면 감지, API 호출 건너뛰기');
     return;
   }
   
-  console.log('indicator.js - 초기화 진행');
-  try {
-    // 로컬 스토리지에서 저장된 모든 결과 불러오기
-    const keys = Object.keys(localStorage);
-    const resultKeys = keys.filter(key => key.startsWith('indicator_result_'));
-    
-    // 결과 키에서 기관 코드와 지표 ID 추출
-    resultKeys.forEach(key => {
-      try {
-        // 키 형식: indicator_result_[기관코드]_[지표ID]
-        const parts = key.split('_');
-        if (parts.length >= 4) {
-          const orgCode = parts[2];
-          const indicatorId = parts[3];
-          
-          // 결과 데이터 불러오기
-          const resultDataStr = localStorage.getItem(key);
-          if (resultDataStr) {
-            const resultData = JSON.parse(resultDataStr);
-            
-            // 캐시 초기화
-            if (!cachedResults[orgCode]) {
-              cachedResults[orgCode] = [];
-            }
-            
-            // 결과 객체 생성
-            const result = {
-              지표ID: indicatorId,
-              기관코드: orgCode,
-              결과: resultData.결과,
-              의견: resultData.의견,
-              평가월: resultData.평가월,
-              평가일자: resultData.평가일자
-            };
-            
-            // 기존 결과 확인
-            const existingIdx = cachedResults[orgCode].findIndex(r => 
-              r.지표ID === indicatorId && r.평가월 === resultData.평가월);
-            
-            if (existingIdx >= 0) {
-              // 기존 결과 업데이트
-              cachedResults[orgCode][existingIdx] = result;
-            } else {
-              // 새 결과 추가
-              cachedResults[orgCode].push(result);
-            }
-            
-            // 월별 결과 캐시 업데이트
-            const monthlyKey = `${orgCode}_${indicatorId}`;
-            if (!cachedIndicatorResults[monthlyKey]) {
-              cachedIndicatorResults[monthlyKey] = {};
-            }
-            cachedIndicatorResults[monthlyKey][resultData.평가월] = resultData.결과;
-          }
-        }
-      } catch (err) {
-        console.warn(`로컬 스토리지 항목 '${key}' 처리 중 오류:`, err);
-      }
-    });
-    
-    console.log('로컬 스토리지에서 결과 데이터 복구 완료');
-  } catch (e) {
-    console.warn('로컬 스토리지에서 결과 복구 중 오류:', e);
-  }
+  // 주기 탭 설정
+  setupPeriodTabs();
 });
+
+// 주기 탭 설정
+const setupPeriodTabs = () => {
+  console.log('주기 탭 설정 시작');
+  
+  // 모든 주기 탭 버튼 찾기
+  const periodTabs = document.querySelectorAll('button.period-tab');
+  console.log(`발견된 주기 탭 수: ${periodTabs.length}`);
+
+  // 각 탭에 대한 정보 로깅
+  periodTabs.forEach((tab, index) => {
+    const period = tab.getAttribute('data-period');
+    const text = tab.textContent.trim();
+    console.log(`탭 ${index + 1}: period=${period}, text=${text}`);
+  });
+
+  // 각 탭에 클릭 이벤트 리스너 추가
+  periodTabs.forEach(tab => {
+    // 기존 이벤트 리스너 제거
+    tab.removeEventListener('click', handlePeriodTabClick);
+    
+    // 새 이벤트 리스너 추가
+    tab.addEventListener('click', handlePeriodTabClick);
+    console.log(`이벤트 리스너 추가됨: ${tab.getAttribute('data-period')}`);
+  });
+
+  // 초기 탭 선택 (매월 또는 첫 번째 탭)
+  const monthlyTab = document.querySelector('button.period-tab[data-period="매월"]');
+  if (monthlyTab) {
+    console.log('매월 탭 자동 선택');
+    monthlyTab.click();
+  } else {
+    console.warn('매월 탭을 찾을 수 없음');
+    // 첫 번째 탭 선택
+    const firstTab = periodTabs[0];
+    if (firstTab) {
+      console.log('첫 번째 탭 자동 선택');
+      firstTab.click();
+    }
+  }
+};
+
+// 주기 변경 처리
+const handlePeriodChange = async (period) => {
+  console.log(`주기 변경 처리 시작: ${period}`);
+
+  // 모든 탭 비활성화
+  document.querySelectorAll('[data-period]').forEach(tab => {
+    tab.classList.remove('active', 'border-blue-500', 'text-blue-600');
+    tab.classList.add('text-gray-500');
+  });
+
+  // 선택된 탭 활성화
+  const selectedTab = document.querySelector(`[data-period="${period}"]`);
+  if (selectedTab) {
+    selectedTab.classList.add('active', 'border-blue-500', 'text-blue-600');
+    selectedTab.classList.remove('text-gray-500');
+  }
+
+  // 현재 주기 업데이트
+  currentPeriod = period;
+
+  try {
+    console.log(`${period} 지표 로드 시작`);
+    const success = await loadIndicatorsByPeriod(period);
+    console.log(`${period} 지표 로드 ${success ? '성공' : '실패'}`);
+  } catch (error) {
+    console.error(`${period} 지표 로드 중 오류:`, error);
+    showMessage(`${period} 지표를 불러오는 중 오류가 발생했습니다.`, 'error');
+  }
+};
+
+// 주기 탭 클릭 핸들러
+const handlePeriodTabClick = async (event) => {
+  event.preventDefault();
+  const tab = event.currentTarget;
+  const period = tab.getAttribute('data-period');
+  
+  console.log(`주기 탭 클릭됨: ${period}`);
+  console.log('클릭된 탭 요소:', tab);
+  console.log('탭 데이터:', { id: tab.id, classes: tab.className, period });
+
+  // 이미 선택된 탭이면 무시
+  if (tab.classList.contains('border-blue-500')) {
+    console.log('이미 선택된 탭입니다');
+    return;
+  }
+
+  // 모든 탭 비활성화
+  document.querySelectorAll('button.period-tab').forEach(t => {
+    t.classList.remove('active', 'border-blue-500');
+    t.classList.add('border-transparent');
+  });
+
+  // 클릭된 탭 활성화
+  tab.classList.remove('border-transparent');
+  tab.classList.add('active', 'border-blue-500');
+
+  // 현재 주기 업데이트
+  currentPeriod = period;
+  console.log('현재 주기 설정:', currentPeriod);
+
+  try {
+    // 로딩 상태 표시
+    const indicatorsContainer = document.getElementById('indicators-list-sidebar');
+    if (indicatorsContainer) {
+      indicatorsContainer.innerHTML = '<div class="p-4 text-center text-gray-500">지표 목록을 불러오는 중...</div>';
+    }
+
+    console.log(`${period} 지표 로드 시작`);
+    const success = await loadIndicatorsByPeriod(period);
+    console.log(`${period} 지표 로드 ${success ? '성공' : '실패'}`);
+    
+    if (!success) {
+      if (indicatorsContainer) {
+        indicatorsContainer.innerHTML = `<div class="p-4 text-center text-gray-500">${period} 지표가 없습니다.</div>`;
+      }
+    }
+  } catch (error) {
+    console.error(`${period} 지표 로드 중 오류:`, error);
+    showMessage(`${period} 지표를 불러오는 중 오류가 발생했습니다.`, 'error');
+    
+    const indicatorsContainer = document.getElementById('indicators-list-sidebar');
+    if (indicatorsContainer) {
+      indicatorsContainer.innerHTML = `
+        <div class="p-4 text-center text-red-500">
+          <div>오류가 발생했습니다</div>
+          <div class="text-sm mt-2">${error.message || '알 수 없는 오류'}</div>
+          <button id="retry-period-tab" class="mt-3 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+            다시 시도
+          </button>
+        </div>
+      `;
+      
+      // 다시 시도 버튼에 이벤트 리스너 추가
+      document.getElementById('retry-period-tab')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        console.log('다시 시도 버튼 클릭됨');
+        handlePeriodTabClick({ preventDefault: () => {}, currentTarget: tab });
+      });
+    }
+  }
+};
 
 // 주기별 지표 로드
 const loadIndicatorsByPeriod = async (period) => {
+  console.log('-----------------------------------------------------------');
+  console.log('지표 요청 시작:', period);
+  console.log('-----------------------------------------------------------');
+  
   try {
     // 기관 선택 확인
     if (!selectedOrganization) {
+      console.error('지표 로드 오류: 기관이 선택되지 않음');
       showMessage('기관을 먼저 선택해주세요.', 'error');
+      document.getElementById('indicators-list-sidebar').innerHTML = 
+        '<li class="py-4 px-3 text-red-500 text-center">기관을 먼저 선택해주세요.</li>';
       return false;
     }
     
+    console.log('선택된 기관:', selectedOrganization);
+    
     // 로딩 상태 표시
-    document.getElementById('indicators-list-sidebar').innerHTML = '<li class="py-4 px-3 text-gray-500 text-center">지표 목록을 불러오는 중...</li>';
+    document.getElementById('indicators-list-sidebar').innerHTML = 
+      '<li class="py-4 px-3 text-gray-500 text-center">지표 목록을 불러오는 중...</li>';
     
     // 주기 설정
     currentPeriod = period;
+    window.currentPeriod = period; // 전역 변수로도 설정
     
     // 주기 탭 UI 업데이트
     updatePeriodTabsUI(period);
@@ -113,66 +211,328 @@ const loadIndicatorsByPeriod = async (period) => {
     // 주기별 요약 타이틀 업데이트
     document.getElementById('current-period-title').textContent = `${period} 점검 현황`;
     
-    console.log(`${period} 지표 요청 시작`);
+    console.log(`${period} 지표 API 요청 준비`);
     
-    // 지표 데이터 가져오기
-    const response = await indicatorApi.getIndicatorsByPeriod(period);
-    console.log('지표 API 응답:', response);
+    let indicatorData = null;
     
-    if (response.status === 'success' && response.data && response.data.indicators) {
-      console.log(`${period} 지표 ${response.data.indicators.length}개 로드됨`);
+    try {
+      // API 요청 설정 추가
+      const requestOptions = {
+        credentials: 'include',
+        headers: getAuthHeaders()
+      };
       
-      if (response.data.indicators.length === 0) {
-        document.getElementById('indicators-list-sidebar').innerHTML = 
-          `<li class="py-4 px-3 text-gray-500 text-center">${period} 주기에 점검할 지표가 없습니다.</li>`;
+      console.log('API 요청 옵션:', requestOptions);
+      
+      // 캐시 방지를 위한 타임스탬프 추가
+      const timestamp = new Date().getTime();
+      
+      // 직접 fetch 요청으로 시도
+      console.log(`직접 API 호출: /api/indicators/period/${period}?_t=${timestamp}`);
+      const directResponse = await fetch(`/api/indicators/period/${period}?_t=${timestamp}`, {
+        method: 'GET',
+        headers: getAuthHeaders() || {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include'
+      });
+      
+      console.log(`API 직접 호출 응답 상태:`, directResponse.status);
+      const directData = await directResponse.json();
+      console.log(`API 직접 호출 응답 내용:`, directData);
+      
+      if (directData && directData.status === 'success') {
+        console.log(`API에서 수신한 전체 지표 수:`, directData.data?.indicators?.length || 0);
+      } else {
+        console.error('API 직접 호출 중 오류:', directData);
+      }
+      
+      // 지표 데이터 가져오기 (API 클래스 이용)
+      const response = await indicatorApi.getIndicatorsByPeriod(period);
+      console.log('지표 API 원본 응답:', response);
+      
+      if (response.status === 'success' && response.data && response.data.indicators) {
+        console.log('=== 지표 필터링 시작 ===');
+        console.log('전체 지표 수:', response.data.indicators.length);
         
-        // 지표 상세 영역 초기화
-        document.getElementById('indicator-detail').innerHTML = 
-          `<div class="text-center p-10">
-            <p class="text-gray-500">${period} 주기에 점검할 지표가 없습니다.</p>
-          </div>`;
+        // 주기에 따라 지표 필터링
+        let filteredIndicators = response.data.indicators;
+        
+        // 디버그: 각 지표의 정보 출력
+        console.log('원본 지표 데이터 샘플:', filteredIndicators.slice(0, 3));
+        
+        if (period === '반기') {
+          console.log('반기 필터링 시작 - 원래 지표 수:', filteredIndicators.length);
           
-        // 진행 상황 초기화
-        updatePeriodSummary([]);
-        return false;
-      }
-      
-      // 기관 코드
-      const orgCode = selectedOrganization?.code || selectedOrganization?.기관코드;
-      
-      // 지표 목록을 렌더링하기 전에 결과 데이터를 미리 가져와서 캐싱
-      if (!cachedResults[orgCode] || Object.keys(cachedResults[orgCode]).length === 0) {
-        try {
-          const resultsResponse = await resultApi.getResultsByOrganization(orgCode);
-          if (resultsResponse.status === 'success' && resultsResponse.data.results) {
-            cachedResults[orgCode] = resultsResponse.data.results;
+          // 원본 데이터 백업
+          const originalIndicators = [...filteredIndicators];
+          
+          // 반기 지표 필터링 (이제 '연중' 카테고리도 포함)
+          filteredIndicators = filteredIndicators.filter(indicator => {
+            const code = (indicator.code || '').toUpperCase();
+            const name = (indicator.name || '').toUpperCase();
+            const category = (indicator.category || '').toUpperCase();
+            
+            // isSemiAnnual 플래그가 명시적으로 true인 경우 먼저 확인
+            if (indicator.isSemiAnnual === true) {
+              console.log('isSemiAnnual 플래그가 있는 지표 발견:', indicator);
+              return true;
+            }
+            
+            // 연중 카테고리도 포함
+            if (category === '연중' || category.includes('연중')) {
+              console.log('연중 카테고리 지표 포함:', {
+                id: indicator.id,
+                code,
+                name,
+                category
+              });
+              return true;
+            }
+            
+            const isHalfYearly = 
+              code.startsWith('H') || 
+              category.includes('반기') || 
+              name.includes('반기');
+            
+            if (isHalfYearly) {
+              console.log('반기 지표 발견:', {
+                id: indicator.id,
+                code,
+                name,
+                category,
+                reason: code.startsWith('H') ? 'H코드' :
+                        category.includes('반기') ? '반기 카테고리' :
+                        name.includes('반기') ? '반기 이름' : '기타'
+              });
+              return true;
+            } else {
+              console.log('반기 필터링에서 제외된 지표:', {
+                id: indicator.id,
+                code,
+                name,
+                category
+              });
+              return false;
+            }
+          });
+          
+          console.log('반기 필터링 후 지표 수:', filteredIndicators.length);
+          
+          // 필터링에 아무것도 없으면 모든 '연중' 카테고리도 포함
+          if (filteredIndicators.length === 0) {
+            console.log('반기 지표가 없어 연중 지표도 포함');
+            filteredIndicators = originalIndicators.filter(indicator => {
+              return (indicator.category || '').toUpperCase().includes('연중');
+            });
+            
+            console.log('연중 지표 포함 후 지표 수:', filteredIndicators.length);
           }
-        } catch (error) {
-          console.error('결과 데이터 사전 로딩 중 오류 발생:', error);
+          
+          // 그래도 없으면 원본 데이터 모두 사용
+          if (filteredIndicators.length === 0) {
+            console.log('반기/연중 지표 모두 없어 원본 데이터 전체 사용');
+            filteredIndicators = originalIndicators;
+          }
+        } else if (period === '1~3월') {
+          console.log('1~3월 필터링 시작 - 원래 지표 수:', filteredIndicators.length);
+          
+          // 원본 데이터 백업
+          const originalIndicators = [...filteredIndicators];
+          
+          // 1~3월 지표만 필터링
+          filteredIndicators = filteredIndicators.filter(indicator => {
+            const code = (indicator.code || '').toUpperCase();
+            const name = (indicator.name || '').toUpperCase(); 
+            const category = (indicator.category || '').toUpperCase();
+            
+            // isFirstQuarter 플래그가 명시적으로 true인 경우 먼저 확인
+            if (indicator.isFirstQuarter === true) {
+              console.log('isFirstQuarter 플래그가 있는 지표 발견:', indicator);
+              return true;
+            }
+            
+            // 카테고리로 1~3월 판별
+            if (category === '1~3월' || category === '1-3월' || 
+                category.includes('1~3월') || category.includes('1-3월')) {
+              console.log('1~3월 카테고리 지표 포함:', {
+                id: indicator.id,
+                code,
+                name,
+                category
+              });
+              return true;
+            }
+            
+            // 코드나 이름으로 분기 판별
+            const isFirstQuarter = 
+              code.startsWith('Q') || 
+              name.includes('1~3월') ||
+              name.includes('1-3월');
+            
+            if (isFirstQuarter) {
+              console.log('1~3월 지표 발견:', {
+                id: indicator.id,
+                code,
+                name,
+                category,
+                reason: code.startsWith('Q') ? 'Q코드' :
+                        name.includes('1~3월') || name.includes('1-3월') ? '1~3월 이름' : '기타'
+              });
+              return true;
+            } else {
+              console.log('1~3월 필터링에서 제외된 지표:', {
+                id: indicator.id,
+                code,
+                name,
+                category
+              });
+              return false;
+            }
+          });
+          
+          console.log('1~3월 필터링 후 지표 수:', filteredIndicators.length);
+          
+          // 필터링에 아무것도 없으면 모든 지표 포함 (임시 대응)
+          if (filteredIndicators.length === 0) {
+            console.log('1~3월 지표가 없어 모든 지표를 포함');
+            filteredIndicators = originalIndicators;
+          }
+        } else {
+          // 매월 지표만 필터링 (반기와 1~3월 지표 제외)
+          console.log('매월 필터링 시작 - 원래 지표 수:', filteredIndicators.length);
+          
+          filteredIndicators = filteredIndicators.filter(indicator => {
+            const code = (indicator.code || '').toUpperCase();
+            const name = (indicator.name || '').toUpperCase();
+            const category = (indicator.category || '').toUpperCase();
+            
+            // 매월 카테고리인 경우만 포함
+            if (category === '매월' || category.includes('매월')) {
+              console.log('매월 카테고리 지표 포함:', {
+                id: indicator.id,
+                code,
+                name,
+                category
+              });
+              return true;
+            }
+            
+            // 반기, 1~3월, 연중 카테고리는 제외
+            if (category === '반기' || category === '1~3월' || category === '1-3월' || category === '연중' ||
+                category.includes('반기') || category.includes('1~3월') || category.includes('1-3월') || category.includes('연중')) {
+              console.log('매월 아닌 카테고리 지표 제외:', {
+                id: indicator.id,
+                code,
+                name,
+                category
+              });
+              return false;
+            }
+            
+            // 코드나 플래그로 판별
+            const isNotMonthly = 
+              code.startsWith('H') || 
+              code.startsWith('Q') || 
+              code.startsWith('Y') || 
+              name.includes('반기') ||
+              name.includes('1~3월') ||
+              name.includes('1-3월') ||
+              indicator.isSemiAnnual === true ||
+              indicator.isFirstQuarter === true;
+            
+            if (isNotMonthly) {
+              console.log('매월 아닌 기타 지표 제외:', {
+                id: indicator.id,
+                code,
+                name,
+                category
+              });
+              return false;
+            }
+            
+            console.log('매월 지표로 포함:', {
+              id: indicator.id,
+              code,
+              name,
+              category
+            });
+            return true;
+          });
+          
+          console.log('매월 필터링 후 지표 수:', filteredIndicators.length);
         }
+        
+        console.log(`필터링 후 ${period} 지표 수:`, filteredIndicators.length);
+        console.log('필터링된 지표 목록:', filteredIndicators);
+        console.log('=== 지표 필터링 완료 ===');
+        
+        indicatorData = {
+          ...response.data,
+          indicators: filteredIndicators
+        };
+      } else {
+        console.error('지표 로딩 중 서버 응답 오류:', response);
+        throw new Error('서버에서 지표 데이터를 가져오는데 실패했습니다.');
       }
-      
-      // 지표 목록 렌더링
-      await renderIndicatorsSidebar(response.data.indicators);
-      
-      // 현재 주기의 진행 현황 업데이트
-      updatePeriodSummary(response.data.indicators);
-      
-      return true;
+    } catch (apiError) {
+      console.error('지표 API 호출 실패:', apiError);
+      throw apiError;
     }
     
-    // 응답 오류 처리
-    const errorMessage = response.message || '지표 목록을 가져오는데 실패했습니다.';
-    console.error('지표 응답 오류:', errorMessage);
-    
-    document.getElementById('indicators-list-sidebar').innerHTML = 
-      `<li class="py-4 px-3 text-red-500 text-center">
-        <div>오류가 발생했습니다</div>
-        <div class="text-xs mt-1">${errorMessage}</div>
-      </li>`;
+    if (!indicatorData || !indicatorData.indicators || indicatorData.indicators.length === 0) {
+      console.warn(`${period} 주기에 표시할 지표가 없습니다.`);
+      document.getElementById('indicators-list-sidebar').innerHTML = 
+        `<li class="py-4 px-3 text-gray-500 text-center">${period} 주기에 점검할 지표가 없습니다.</li>`;
       
-    showMessage(errorMessage, 'error');
-    return false;
+      // 지표 상세 영역 초기화
+      document.getElementById('indicator-detail').innerHTML = 
+        `<div class="text-center p-10">
+          <p class="text-gray-500">${period} 주기에 점검할 지표가 없습니다.</p>
+          <button id="reload-indicators-btn" class="mt-3 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+            다시 시도
+          </button>
+        </div>`;
+        
+      // 다시 시도 버튼에 이벤트 리스너 추가
+      document.getElementById('reload-indicators-btn')?.addEventListener('click', () => {
+        console.log('지표 다시 로드 버튼 클릭');
+        loadIndicatorsByPeriod(period);
+      });
+        
+      // 진행 상황 초기화
+      updatePeriodSummary([]);
+      return false;
+    }
+    
+    // 기관 코드
+    const orgCode = selectedOrganization?.code || selectedOrganization?.기관코드;
+    console.log('선택된 기관 코드:', orgCode);
+    
+    // 지표 목록을 렌더링하기 전에 결과 데이터를 미리 가져와서 캐싱
+    if (!cachedResults[orgCode] || Object.keys(cachedResults[orgCode]).length === 0) {
+      try {
+        console.log('기관 결과 데이터 로드 시도:', orgCode);
+        const resultsResponse = await resultApi.getResultsByOrganization(orgCode);
+        if (resultsResponse.status === 'success' && resultsResponse.data.results) {
+          cachedResults[orgCode] = resultsResponse.data.results;
+          console.log(`${cachedResults[orgCode].length}개 결과 데이터 캐싱됨`);
+        }
+      } catch (error) {
+        console.error('결과 데이터 사전 로딩 중 오류 발생:', error);
+        cachedResults[orgCode] = [];
+      }
+    }
+    
+    // 지표 목록 렌더링
+    await renderIndicatorsSidebar(indicatorData.indicators);
+    
+    // 현재 주기의 진행 현황 업데이트
+    updatePeriodSummary(indicatorData.indicators);
+    
+    console.log(`${period} 지표 로드 완료`);
+    return true;
   } catch (error) {
     console.error('지표 목록 로딩 중 오류 발생:', error);
     
@@ -180,7 +540,16 @@ const loadIndicatorsByPeriod = async (period) => {
       `<li class="py-4 px-3 text-red-500 text-center">
         <div>오류가 발생했습니다</div>
         <div class="text-xs mt-1">${error.message || '알 수 없는 오류'}</div>
+        <button id="retry-indicators-btn" class="mt-3 px-3 py-1 text-xs bg-blue-500 text-white rounded">
+          다시 시도
+        </button>
       </li>`;
+      
+    // 다시 시도 버튼에 이벤트 리스너 추가
+    document.getElementById('retry-indicators-btn')?.addEventListener('click', () => {
+      console.log('오류 후 다시 시도 버튼 클릭');
+      loadIndicatorsByPeriod(period);
+    });
       
     showMessage('지표 목록을 불러오는 중 오류가 발생했습니다.', 'error');
     return false;
@@ -208,7 +577,10 @@ const updatePeriodTabsUI = (period) => {
 const renderIndicatorsSidebar = async (indicators) => {
   const sidebarContainer = document.getElementById('indicators-list-sidebar');
   
-  if (!sidebarContainer) return;
+  if (!sidebarContainer) {
+    console.error('지표 목록 사이드바 컨테이너를 찾을 수 없습니다.');
+    return;
+  }
   
   // 지표 목록 초기화
   sidebarContainer.innerHTML = '';
@@ -224,7 +596,20 @@ const renderIndicatorsSidebar = async (indicators) => {
   console.log('===============================');
   
   if (!indicators || indicators.length === 0) {
-    sidebarContainer.innerHTML = '<li class="py-4 px-3 text-gray-500 text-center">해당 주기에 점검할 지표가 없습니다.</li>';
+    sidebarContainer.innerHTML = `
+      <li class="py-4 px-3 text-gray-500 text-center">
+        <div>해당 주기에 점검할 지표가 없습니다.</div>
+        <button id="reload-indicators-btn" class="mt-3 px-3 py-1 text-xs bg-blue-500 text-white rounded">
+          다시 시도
+        </button>
+      </li>
+    `;
+    
+    // 다시 시도 버튼 이벤트 추가
+    document.getElementById('reload-indicators-btn')?.addEventListener('click', () => {
+      loadIndicatorsByPeriod(currentPeriod);
+    });
+    
     return;
   }
   
@@ -242,10 +627,12 @@ const renderIndicatorsSidebar = async (indicators) => {
   try {
     console.log('서버에서 최신 결과 데이터 로드 시도...');
     const resultsResponse = await resultApi.getResultsByOrganization(orgCode);
-    if (resultsResponse.status === 'success' && resultsResponse.data.results) {
+    if (resultsResponse.status === 'success' && resultsResponse.data && resultsResponse.data.results) {
       cachedResultsForOrg = resultsResponse.data.results;
       cachedResults[orgCode] = cachedResultsForOrg; // 캐시 업데이트
       console.log(`서버에서 ${cachedResultsForOrg.length}개 결과 데이터 로드됨`);
+    } else {
+      console.warn('서버에서 유효한 결과 데이터를 받지 못함:', resultsResponse);
     }
   } catch (error) {
     console.warn('서버에서 결과 데이터 로드 실패, 캐시된 데이터 사용:', error);
@@ -263,146 +650,159 @@ const renderIndicatorsSidebar = async (indicators) => {
   
   // 각 지표별 항목 생성
   for (const indicator of indicators) {
-    // 구글 시트 데이터의 필드명 사용
-    const indicatorId = indicator.id || '';
-    const indicatorName = indicator.name || '';
-    const indicatorCode = indicator.code || '';
-    
-    // 연중 지표 또는 특화 지표 여부 확인
-    const isYearly = indicator.category === '연중';
-    const isSpecial = indicatorName.includes('(특화)');
-    const isSemiAnnual = indicator.category === '반기' || 
-                       indicatorName.includes('반기') || 
-                       indicatorCode.startsWith('H') || 
-                       indicatorCode.match(/H\d{3}/);
-    
-    // 평가연계 지표 여부 확인
-    const isEvaluation = indicator.평가연계 === 'O';
+    try {
+      // 구글 시트 데이터의 필드명 사용 (필드가 없을 경우 기본값 제공)
+      const indicatorId = indicator.id || '';
+      const indicatorName = indicator.name || '이름 없는 지표';
+      const indicatorCode = indicator.code || indicatorId;
+      
+      // 지표 ID가 없는 경우 건너뛰기
+      if (!indicatorId) {
+        console.warn('지표 ID가 없는 항목 발견, 건너뜁니다:', indicator);
+        continue;
+      }
+      
+      // 연중 지표 또는 특화 지표 여부 확인
+      const isYearly = indicator.category === '연중';
+      const isSpecial = indicatorName.includes('(특화)');
+      const isSemiAnnual = indicator.category === '반기' || 
+                        indicatorName.includes('반기') || 
+                        (indicatorCode && indicatorCode.startsWith('H')) || 
+                        (indicatorCode && indicatorCode.match(/H\d{3}/));
+      
+      // 평가연계 지표 여부 확인
+      const isEvaluation = indicator.평가연계 === 'O';
 
-    // 명확한 반기 모니터링 여부 판별
-    const isSemiAnnualMonitoring = isSemiAnnual || 
-                                 (currentPeriod === '반기' && !isYearly) || 
-                                 indicatorCode.startsWith('H');
-    
-    // 디버그 로깅
-    console.log(`지표 항목 생성: ID=${indicatorId}, 이름=${indicatorName}, 코드=${indicatorCode}, 연중=${isYearly}, 특화=${isSpecial}, 반기=${isSemiAnnual}, 평가연계=${isEvaluation}`);
-    
-    // 캐시된 결과에서 이전 결과 조회
-    const results = resultsByIndicator[indicatorId] || [];
-    
-    // 가장 최신 결과 찾기 (평가일자 기준 정렬)
-    let previousResult = null;
-    if (results.length > 0) {
-      // 평가일자 기준으로 결과 정렬
-      results.sort((a, b) => {
-        const dateA = a.평가일자 ? new Date(a.평가일자) : new Date(0);
-        const dateB = b.평가일자 ? new Date(b.평가일자) : new Date(0);
-        return dateB - dateA; // 내림차순 정렬 (최신 순)
-      });
+      // 명확한 반기 모니터링 여부 판별
+      const isSemiAnnualMonitoring = isSemiAnnual || 
+                                  (currentPeriod === '반기' && !isYearly) || 
+                                  (indicatorCode && indicatorCode.startsWith('H'));
       
-      // 현재 월(4월)의 결과 찾기
-      const currentMonthResults = results.filter(r => r.평가월 == currentMonth.toString());
-      if (currentMonthResults.length > 0) {
-        previousResult = currentMonthResults[0]; // 현재 월의 가장 최신 결과
-        console.log(`${indicatorId} 지표의 ${currentMonth}월 결과 찾음:`, previousResult.결과);
-      } else {
-        // 현재 월 결과가 없으면 가장 최신 결과 사용
-        previousResult = results[0];
-        console.log(`${indicatorId} 지표의 ${currentMonth}월 결과 없음, 최신 결과 사용:`, previousResult.결과);
-      }
-    }
-    
-    // 결과 상태 결정
-    let resultStatus = '미점검';
-    let statusClass = 'bg-gray-200 text-gray-700';
-    let monthText = '';
-    
-    if (previousResult) {
-      const result = previousResult.결과 || previousResult.result;
-      const month = previousResult.평가월 || '';
+      // 디버그 로깅
+      console.log(`지표 항목 생성: ID=${indicatorId}, 이름=${indicatorName}, 코드=${indicatorCode}, 연중=${isYearly}, 특화=${isSpecial}, 반기=${isSemiAnnual}, 평가연계=${isEvaluation}`);
       
-      if (result === '충족') {
-        resultStatus = '충족';
-        statusClass = 'bg-green-500 text-white';
-      } else if (result === '미충족') {
-        resultStatus = '미충족';
-        statusClass = 'bg-yellow-500 text-white';
-      } else if (result === '해당없음') {
-        resultStatus = '해당없음';
-        statusClass = 'bg-gray-400 text-white';
-      }
+      // 캐시된 결과에서 이전 결과 조회
+      const results = resultsByIndicator[indicatorId] || [];
       
-      // 월 표시 추가
-      if (month) {
-        monthText = ` (${month}월)`;
-      }
-    }
-    
-    // 카드 클래스 결정
-    let cardClass = 'indicator-card border rounded p-3 mb-3';
-    if (isYearly) {
-        cardClass += ' bg-yellow-50';
-    } else if (isSemiAnnualMonitoring) {
-        cardClass += ' bg-blue-50';
-    } else if (isSpecial) {
-        cardClass += ' bg-purple-50';
-    } else {
-        cardClass += ' bg-gray-50';
-    }
-    
-    // 평가연계 지표는 붉은 배경과 굵은 테두리로 강조
-    if (isEvaluation) {
-        cardClass = cardClass.replace(/bg-\w+-50/g, 'bg-red-50');
-        cardClass += ' border-red-500 border-2';
-    }
-    
-    // 사이드바 항목 생성
-    const listItem = document.createElement('li');
-    
-    listItem.className = cardClass;
-    listItem.dataset.indicatorId = indicatorId;
-    
-    // 지표 유형 표시 추가
-    const typeTag = isYearly ? '<span class="text-xs text-red-500 mr-1">[연중]</span>' : '';
-    const specialTag = isSpecial ? '<span class="text-xs text-purple-500 mr-1">[특화]</span>' : '';
-    const evaluationTag = isEvaluation ? '<span class="text-xs text-red-600 font-bold mr-1">[평가]</span>' : '';
-    
-    // 사이드바 항목의 HTML 구조를 개선하여 일관성 확보
-    listItem.innerHTML = `
-      <div class="flex items-center justify-between">
-        <div class="indicator-info">
-          <div class="text-sm font-medium text-gray-800">${evaluationTag}${typeTag}${specialTag}${indicatorName}</div>
-          <div class="text-xs text-gray-500 mt-1">${indicatorCode}</div>
-        </div>
-        <div class="indicator-status">
-          <span class="px-2 py-1 text-xs rounded-full ${statusClass} whitespace-nowrap">${resultStatus}${monthText}</span>
-        </div>
-      </div>
-    `;
-    
-    // 클릭 이벤트 - 지표 선택
-    listItem.addEventListener('click', () => {
-      selectIndicator(indicator, previousResult);
-      
-      // 활성화된 항목 스타일 변경
-      document.querySelectorAll('#indicators-list-sidebar li').forEach(item => {
-        item.classList.remove('bg-blue-50', 'border-l-4', 'border-blue-500', 'pl-2');
+      // 가장 최신 결과 찾기 (평가일자 기준 정렬)
+      let previousResult = null;
+      if (results.length > 0) {
+        // 평가일자 기준으로 결과 정렬
+        results.sort((a, b) => {
+          const dateA = a.평가일자 ? new Date(a.평가일자) : new Date(0);
+          const dateB = b.평가일자 ? new Date(b.평가일자) : new Date(0);
+          return dateB - dateA; // 내림차순 정렬 (최신 순)
+        });
         
-        // 평가연계 지표인 경우 기본 스타일 유지
-        if (!item.classList.contains('bg-red-50')) {
-          item.classList.remove('bg-red-50', 'border-l-4', 'border-red-300');
+        // 현재 월(4월)의 결과 찾기
+        const currentMonthResults = results.filter(r => r.평가월 == currentMonth.toString());
+        if (currentMonthResults.length > 0) {
+          previousResult = currentMonthResults[0]; // 현재 월의 가장 최신 결과
+          console.log(`${indicatorId} 지표의 ${currentMonth}월 결과 찾음:`, previousResult.결과);
+        } else {
+          // 현재 월 결과가 없으면 가장 최신 결과 사용
+          previousResult = results[0];
+          console.log(`${indicatorId} 지표의 ${currentMonth}월 결과 없음, 최신 결과 사용:`, previousResult.결과);
+        }
+      }
+      
+      // 결과 상태 결정
+      let resultStatus = '미점검';
+      let statusClass = 'bg-gray-200 text-gray-700';
+      let monthText = '';
+      
+      if (previousResult) {
+        const result = previousResult.결과 || previousResult.result;
+        const month = previousResult.평가월 || '';
+        
+        if (result === '충족') {
+          resultStatus = '충족';
+          statusClass = 'bg-green-500 text-white';
+        } else if (result === '미충족') {
+          resultStatus = '미충족';
+          statusClass = 'bg-yellow-500 text-white';
+        } else if (result === '해당없음') {
+          resultStatus = '해당없음';
+          statusClass = 'bg-gray-400 text-white';
+        }
+        
+        // 월 표시 추가
+        if (month) {
+          monthText = ` (${month}월)`;
+        }
+      }
+      
+      // 카드 클래스 결정
+      let cardClass = 'indicator-card border rounded p-3 mb-3';
+      if (isYearly) {
+          cardClass += ' bg-yellow-50';
+      } else if (isSemiAnnualMonitoring) {
+          cardClass += ' bg-blue-50';
+      } else if (isSpecial) {
+          cardClass += ' bg-purple-50';
+      } else {
+          cardClass += ' bg-gray-50';
+      }
+      
+      // 평가연계 지표는 붉은 배경과 굵은 테두리로 강조
+      if (isEvaluation) {
+          cardClass = cardClass.replace(/bg-\w+-50/g, 'bg-red-50');
+          cardClass += ' border-red-500 border-2';
+      }
+      
+      // 사이드바 항목 생성
+      const listItem = document.createElement('li');
+      
+      listItem.className = cardClass;
+      listItem.dataset.indicatorId = indicatorId;
+      
+      // 지표 유형 표시 추가
+      const typeTag = isYearly ? '<span class="text-xs text-red-500 mr-1">[연중]</span>' : '';
+      const specialTag = isSpecial ? '<span class="text-xs text-purple-500 mr-1">[특화]</span>' : '';
+      const evaluationTag = isEvaluation ? '<span class="text-xs text-red-600 font-bold mr-1">[평가]</span>' : '';
+      
+      // 사이드바 항목의 HTML 구조를 개선하여 일관성 확보
+      listItem.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="indicator-info">
+            <div class="text-sm font-medium text-gray-800">${evaluationTag}${typeTag}${specialTag}${indicatorName}</div>
+            <div class="text-xs text-gray-500 mt-1">${indicatorCode}</div>
+          </div>
+          <div class="indicator-status">
+            <span class="px-2 py-1 text-xs rounded-full ${statusClass} whitespace-nowrap">${resultStatus}${monthText}</span>
+          </div>
+        </div>
+      `;
+      
+      // 클릭 이벤트 - 지표 선택
+      listItem.addEventListener('click', () => {
+        selectIndicator(indicator, previousResult);
+        
+        // 활성화된 항목 스타일 변경
+        document.querySelectorAll('#indicators-list-sidebar li').forEach(item => {
+          item.classList.remove('bg-blue-50', 'border-l-4', 'border-blue-500', 'pl-2');
+          
+          // 평가연계 지표인 경우 기본 스타일 유지
+          if (!item.classList.contains('bg-red-50')) {
+            item.classList.remove('bg-red-50', 'border-l-4', 'border-red-300');
+          }
+        });
+        
+        // 평가연계 지표는 선택 시에도 붉은색 강조 유지하면서 추가 스타일 적용
+        if (isEvaluation) {
+          listItem.classList.add('bg-red-100', 'pl-2');
+        } else {
+          listItem.classList.add('bg-blue-50', 'border-l-4', 'border-blue-500', 'pl-2');
         }
       });
       
-      // 평가연계 지표는 선택 시에도 붉은색 강조 유지하면서 추가 스타일 적용
-      if (isEvaluation) {
-        listItem.classList.add('bg-red-100', 'pl-2');
-      } else {
-        listItem.classList.add('bg-blue-50', 'border-l-4', 'border-blue-500', 'pl-2');
-      }
-    });
-    
-    sidebarContainer.appendChild(listItem);
+      sidebarContainer.appendChild(listItem);
+    } catch (itemError) {
+      console.error('지표 항목 렌더링 중 오류:', itemError, indicator);
+      
+      // 오류가 있어도 계속 진행
+      continue;
+    }
   }
   
   // 첫 번째 지표 자동 선택
@@ -494,6 +894,27 @@ const selectIndicator = async (indicator, previousResult) => {
     
     if (!indicator) {
       console.error('선택된 지표 정보가 없습니다.');
+      showToast('error', '지표 정보가 없습니다.');
+      
+      // 지표 정보가 없어도 기본적인 UI는 표시
+      document.getElementById('indicator-detail').innerHTML = `
+        <div class="bg-white p-5 rounded-lg shadow-sm">
+          <div class="text-center p-8">
+            <p class="text-gray-500">지표 정보를 불러올 수 없습니다.</p>
+            <button id="retry-indicator-btn" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded">
+              다시 시도
+            </button>
+          </div>
+        </div>
+      `;
+      // 다시 시도 버튼 이벤트
+      document.getElementById('retry-indicator-btn')?.addEventListener('click', () => {
+        if (selectedIndicator) {
+          selectIndicator(selectedIndicator, previousResult);
+        } else {
+          loadIndicatorsByPeriod(currentPeriod);
+        }
+      });
       return;
     }
     
@@ -507,14 +928,18 @@ const selectIndicator = async (indicator, previousResult) => {
     
     selectedIndicator = indicator;
     
-    // 기본 정보
+    // 기본 정보 - 누락된 필드에 대한 기본값 제공
     const indicatorId = indicator.id || '';
-    const indicatorName = indicator.name || '';
-    const indicatorCode = indicator.code || '';
-    const indicatorDesc = indicator.description || indicator.dataSource || '';
+    const indicatorName = indicator.name || '이름 없는 지표';
+    const indicatorCode = indicator.code || indicatorId;
+    const indicatorDesc = indicator.description || indicator.dataSource || '설명 없음';
+    
+    // 특성 필드가 없으면 기본값 사용
     const characteristic = indicator.field5 === 'O' ? '공통필수' : 
                          (indicator.field6 === 'O' ? '공통선택' : 
                          (indicator.field7 === 'O' ? '평가연계' : ''));
+    
+    // 점검방법 필드가 없으면 기본값 사용
     const checkMethod = indicator.field8 === '필수' || indicator.field8 === '선택' ? '온라인점검' : 
                        (indicator.field9 === '필수' || indicator.field9 === '선택' ? '현장점검' : '서류검토');
     
@@ -523,13 +948,13 @@ const selectIndicator = async (indicator, previousResult) => {
     const isSpecial = indicatorName.includes('(특화)');
     const isSemiAnnual = indicator.category === '반기' || 
                        indicatorName.includes('반기') || 
-                       indicatorCode.startsWith('H') || 
-                       indicatorCode.match(/H\d{3}/);
+                       (indicatorCode && indicatorCode.startsWith('H')) || 
+                       (indicatorCode && indicatorCode.match(/H\d{3}/));
     
     // 명확한 반기 모니터링 여부 판별
     const isSemiAnnualMonitoring = isSemiAnnual || 
                                  (currentPeriod === '반기' && !isYearly) || 
-                                 indicatorCode.startsWith('H');
+                                 (indicatorCode && indicatorCode.startsWith('H'));
     
     // 1~3월 점검 여부 확인
     const isFirstQuarter = currentPeriod === '1~3월';
@@ -609,10 +1034,10 @@ const selectIndicator = async (indicator, previousResult) => {
       
       // 반기 지표 여부를 강력하게 확인
       const mustShowAsSemiAnnual = 
-        indicatorCode.startsWith('H') || 
+        (indicatorCode && indicatorCode.startsWith('H')) || 
         indicator.isSemiAnnual === true || 
         indicator.category === '반기' || 
-        indicatorName.includes('반기') ||
+        (indicatorName && indicatorName.includes('반기')) ||
         currentPeriod === '반기';  // 현재 '반기' 탭에 있는 모든 지표는 반기별로 표시
       
       // 1~3월 점검 여부 확인
@@ -946,6 +1371,37 @@ const getMonthlyResults = async (orgCode, indicatorId) => {
   try {
     console.log(`getMonthlyResults 호출됨 - 기관: ${orgCode}, 지표: ${indicatorId}`);
     
+    // 먼저 기본 월별 결과 객체 초기화 (API 호출이 실패해도 이 기본값을 반환)
+    const monthlyResults = {};
+    for (let i = 1; i <= 12; i++) {
+      monthlyResults[i.toString()] = '미점검';
+    }
+    
+    // 필수 파라미터 확인
+    if (!orgCode || !indicatorId) {
+      console.error('getMonthlyResults: 필수 파라미터 누락 - 기관코드나 지표ID가 없습니다');
+      return monthlyResults; // 기본 결과 반환
+    }
+    
+    // 캐시 먼저 확인
+    const monthlyKey = `${orgCode}_${indicatorId}`;
+    if (cachedIndicatorResults[monthlyKey]) {
+      console.log('캐시된 월별 결과 사용:', cachedIndicatorResults[monthlyKey]);
+      return cachedIndicatorResults[monthlyKey];
+    }
+    
+    // 로컬 스토리지 확인
+    try {
+      const storedResults = localStorage.getItem(`monthly_results_${monthlyKey}`);
+      if (storedResults) {
+        const parsedResults = JSON.parse(storedResults);
+        console.log('로컬 스토리지 월별 결과 사용:', parsedResults);
+        return parsedResults;
+      }
+    } catch (e) {
+      console.warn('로컬 스토리지 데이터 복구 실패:', e);
+    }
+    
     // 서버에서 최신 데이터 가져오기 시도
     console.log('서버에서 최신 데이터 요청 중...');
     let results = [];
@@ -962,6 +1418,7 @@ const getMonthlyResults = async (orgCode, indicatorId) => {
         // 결과 캐싱
         cachedResults[orgCode] = results;
       } else {
+        console.warn('서버에서 유효한 결과 응답이 없음:', response);
         throw new Error('결과 데이터가 올바르지 않습니다.');
       }
     } catch (error) {
@@ -978,9 +1435,13 @@ const getMonthlyResults = async (orgCode, indicatorId) => {
           if (storedResults) {
             results = JSON.parse(storedResults);
             console.log('로컬 스토리지 데이터 사용:', results);
+          } else {
+            console.warn('사용 가능한 결과 데이터 없음, 기본 값 반환');
+            return monthlyResults; // 기본 결과 반환
           }
         } catch (e) {
           console.warn('로컬 스토리지 데이터 복구 실패:', e);
+          return monthlyResults; // 기본 결과 반환
         }
       }
     }
@@ -1001,12 +1462,6 @@ const getMonthlyResults = async (orgCode, indicatorId) => {
     });
     
     console.log(`${indicatorResults.length}개의 결과 찾음`);
-    
-    // 월별 결과 객체 초기화
-    const monthlyResults = {};
-    for (let i = 1; i <= 12; i++) {
-      monthlyResults[i.toString()] = '미점검';
-    }
     
     // 결과 데이터로 월별 결과 업데이트
     if (indicatorResults && indicatorResults.length > 0) {
@@ -1036,8 +1491,6 @@ const getMonthlyResults = async (orgCode, indicatorId) => {
     console.log('최종 월별 결과:', monthlyResults);
     
     // 결과 캐싱
-    const monthlyKey = `${orgCode}_${indicatorId}`;
-    
     // 실제 결과가 있는 경우에만 캐시 업데이트
     const hasResults = Object.values(monthlyResults).some(value => value !== '미점검');
     if (hasResults) {
@@ -1052,7 +1505,14 @@ const getMonthlyResults = async (orgCode, indicatorId) => {
     return monthlyResults;
   } catch (error) {
     console.error('getMonthlyResults 실행 중 오류:', error);
-    throw error; // 오류를 상위로 전파하여 처리할 수 있도록 함
+    
+    // 오류 발생 시에도 기본 월별 결과 객체 반환
+    const fallbackResults = {};
+    for (let i = 1; i <= 12; i++) {
+      fallbackResults[i.toString()] = '미점검';
+    }
+    
+    return fallbackResults;
   }
 };
 
@@ -1370,14 +1830,25 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // 주기 탭 클릭 이벤트 설정
   const periodTabs = document.querySelectorAll('.period-tab');
+  console.log('주기 탭 요소들:', periodTabs);
   periodTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const period = tab.dataset.period;
-      if (period) {
-        loadIndicatorsByPeriod(period);
-      }
-    });
+    console.log('주기 탭 이벤트 등록:', tab.getAttribute('data-period'));
+    tab.addEventListener('click', handlePeriodTabClick);
   });
+  
+  // 기관이 선택되었으면 기본 탭(매월) 자동 선택
+  setTimeout(() => {
+    if (selectedOrganization) {
+      console.log('초기화: 기관이 선택되어 있어 기본 탭(매월) 자동 선택');
+      const defaultTab = document.querySelector('.period-tab[data-period="매월"]');
+      if (defaultTab) {
+        console.log('매월 탭 자동 클릭');
+        defaultTab.click();
+      }
+    } else {
+      console.log('초기화: 기관이 선택되지 않아 자동 탭 선택 건너뛰기');
+    }
+  }, 1000); // 1초 지연 후 실행
   
   console.log('지표 페이지 초기화 완료');
 });
@@ -1779,4 +2250,50 @@ const editMonthlyResult = (indicatorId, month, currentResult) => {
       modal.remove();
     }
   });
+};
+
+// 글로벌 함수로 등록 - HTML에서 직접 호출
+window.periodTabClick = function(element, period) {
+  console.log(`주기 탭 직접 클릭: ${period}`);
+  
+  // 모든 탭 비활성화
+  document.querySelectorAll('button.period-tab').forEach(tab => {
+    tab.classList.remove('active', 'border-blue-500');
+    tab.classList.add('border-transparent');
+  });
+
+  // 클릭된 탭 활성화
+  element.classList.remove('border-transparent');
+  element.classList.add('active', 'border-blue-500');
+
+  // 현재 주기 업데이트
+  window.currentPeriod = period;
+  console.log('현재 주기 설정:', window.currentPeriod);
+
+  // 선택된 기관 확인
+  if (!window.selectedOrganization) {
+    console.error('기관이 선택되지 않았습니다.');
+    const sidebar = document.getElementById('indicators-list-sidebar');
+    if (sidebar) {
+      sidebar.innerHTML = '<div class="p-4 text-center text-red-500">기관을 먼저 선택해주세요.</div>';
+    }
+    return;
+  }
+
+  // 로딩 상태 표시
+  const sidebar = document.getElementById('indicators-list-sidebar');
+  if (sidebar) {
+    sidebar.innerHTML = `<div class="p-4 text-center text-gray-500">${period} 지표를 불러오는 중...</div>`;
+  }
+
+  // 주기별 요약 타이틀 업데이트
+  document.getElementById('current-period-title').textContent = `${period} 점검 현황`;
+
+  // 직접 지표 로드 함수 호출
+  console.log(`${period} 지표 로드 직접 호출`);
+  if (typeof loadIndicatorsByPeriod === 'function') {
+    loadIndicatorsByPeriod(period);
+  } else {
+    console.error('loadIndicatorsByPeriod 함수를 찾을 수 없습니다.');
+  }
 };
